@@ -132,12 +132,15 @@ router.post("/logout", async (req, res) => {
   }
 });
 
+// ⬇️ pega esto en lugar de tu handler actual
 router.post("/magic-link", async (req, res) => {
   try {
     const { correo } = req.body;
+    if (!correo) return res.status(400).json({ error: "Falta correo" });
 
     const user = await User.findOne({ correo });
-    if (!user || !user.isActive) return res.json({ ok: true });
+    // responde ok aunque no exista (no filtra información)
+    if (!user || user.isActive === false) return res.json({ ok: true });
 
     const raw = crypto.randomBytes(32).toString("hex");
     const tokenHash = await hash(raw);
@@ -151,22 +154,36 @@ router.post("/magic-link", async (req, res) => {
       userAgent: req.headers["user-agent"] || ""
     });
 
-    const url = `${process.env.APP_ORIGIN}/magic?token=${raw}&email=${encodeURIComponent(correo)}`;
+    const APP_ORIGIN = process.env.APP_ORIGIN;
+    if (!APP_ORIGIN) {
+      console.error("magic-link error: falta APP_ORIGIN");
+      return res.status(500).json({ error: "Config APP_ORIGIN faltante" });
+    }
 
-    await (await import("../email/transporter.js")).transporter.sendMail({
-      to: correo,
-      from: (await import("../email/transporter.js")).FROM,
-      subject: "Tu enlace de acceso",
-      html: `<p>Haz clic para entrar (expira en 15 min):</p>
-             <p><a href="${url}">${url}</a></p>`
-    });
+    const url = `${APP_ORIGIN}/magic?token=${raw}&email=${encodeURIComponent(correo)}`;
 
-    res.json({ ok: true });
+    try {
+      // Opcional pero útil para detectar mala config de SMTP
+      await transporter.verify();
+      await transporter.sendMail({
+        to: correo,
+        from: process.env.MAIL_FROM || process.env.SMTP_USER,
+        subject: "Tu enlace de acceso",
+        html: `<p>Haz clic para entrar (expira en 15 min):</p>
+               <p><a href="${url}">${url}</a></p>`
+      });
+    } catch (smtpErr) {
+      console.error("magic-link SMTP error:", smtpErr);
+      return res.status(500).json({ error: "Fallo al enviar correo" });
+    }
+
+    return res.json({ ok: true });
   } catch (err) {
     console.error("magic-link error:", err);
     return res.status(500).json({ error: "Error en el servidor" });
   }
 });
+
 
 router.post("/magic/verify", async (req, res) => {
   try {
