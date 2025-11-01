@@ -138,52 +138,62 @@ router.post("/magic-link", async (req, res) => {
     if (!correo) return res.status(400).json({ error: "Falta correo" });
 
     const user = await User.findOne({ correo });
-    if (!user || user.isActive === false) return res.json({ ok: true }); // no filtra info
+    if (!user) {
+      console.warn("magic-link: correo no encontrado:", correo);
+      // no reveles existencia del correo al cliente
+      return res.json({ ok: true });
+    }
+    if (user.isActive === false) {
+      console.warn("magic-link: usuario inactivo:", correo);
+      return res.json({ ok: true });
+    }
 
     const raw = crypto.randomBytes(32).toString("hex");
     const tokenHash = await hash(raw);
     const expires = new Date(Date.now() + 1000 * 60 * 15);
 
     await MagicLink.create({
-      userId: user._id, tokenHash, expiresAt: expires,
-      ip: req.ip, userAgent: req.headers["user-agent"] || ""
+      userId: user._id,
+      tokenHash,
+      expiresAt: expires,
+      ip: req.ip,
+      userAgent: req.headers["user-agent"] || ""
     });
 
-    const APP_ORIGIN = process.env.APP_ORIGIN;
-    if (!APP_ORIGIN) {
+    const ORIGIN = process.env.APP_ORIGIN;
+    if (!ORIGIN) {
       console.error("magic-link error: falta APP_ORIGIN");
       return res.status(500).json({ error: "Config APP_ORIGIN faltante" });
     }
 
-    const url = `${APP_ORIGIN}/magic?token=${raw}&email=${encodeURIComponent(correo)}`;
+    const url = `${ORIGIN}/magic?token=${raw}&email=${encodeURIComponent(correo)}`;
 
-    // tras guardar MagicLink y construir `url`
-    transporter.sendMail({
+    // Útil en dev: imprime el enlace
+    if (process.env.NODE_ENV !== "production") {
+      console.log("MAGIC URL DEV:", url);
+    }
+
+    // Envío real
+    await transporter.sendMail({
       to: correo,
-      from: process.env.MAIL_FROM || process.env.SMTP_USER,
+      from: process.env.MAIL_FROM || process.env.SMTP_USER, // que coincida con SMTP_USER para Gmail
       subject: "Tu enlace de acceso",
       html: `<p>Haz clic para entrar (expira en 15 min):</p>
-         <p><a href="${url}">${url}</a></p>`
-    }).catch(e => console.error("magic-link SMTP error:", e));
+             <p><a href="${url}">${url}</a></p>`
+    });
 
-    return res.json({ ok: true }); // responde inmediato
-
-
-    await Promise.race([
-      send,
-      new Promise((_, rej) => setTimeout(() => rej(new Error("SMTP_TIMEOUT")), 7000))
-    ]);
-
+    console.log("magic-link: enviado a", correo);
     return res.json({ ok: true });
   } catch (err) {
-    console.error("magic-link error:", err);
+    console.error("magic-link SMTP/general error:", err);
     const msg = String(err?.message || "");
     if (msg.includes("EAUTH")) return res.status(500).json({ error: "SMTP: credenciales inválidas" });
     if (msg.includes("ENOTFOUND") || msg.includes("ECONNREFUSED")) return res.status(500).json({ error: "SMTP: host/puerto incorrectos" });
-    if (msg.includes("SMTP_TIMEOUT")) return res.status(500).json({ error: "SMTP: timeout" });
-    return res.status(500).json({ error: "Error en el servidor" });
+    if (msg.toUpperCase().includes("TIMEOUT")) return res.status(500).json({ error: "SMTP: timeout" });
+    return res.status(500).json({ error: "No se pudo enviar el correo" });
   }
 });
+
 
 
 
