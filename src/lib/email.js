@@ -2,19 +2,21 @@ import fs from "fs";
 import nodemailer from "nodemailer";
 
 let ca = null;
-if (process.env.NODE_ENV !== "production") {
-  ca = fs.readFileSync("C:/Users/Anton/Downloads/cer.cer");
+if (process.env.NODE_ENV !== "development") {
+  try {
+    ca = fs.readFileSync("C:/Users/Anton/Downloads/cer.cer");
+  } catch {
+    console.warn("⚠️ Certificado no encontrado, continuando sin CA personalizada");
+  }
 }
-
 
 const transporter = nodemailer.createTransport({
   host: "smtp.gmail.com",
   port: 465,
   secure: true,
   auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
-  tls: { minVersion: "TLSv1.2" }, // sin ca
+  tls: { ca: ca ? [ca] : undefined, minVersion: "TLSv1.2" },
 });
-
 
 export async function sendMagicLinkEmail(to, url) {
   const html = `
@@ -24,11 +26,13 @@ export async function sendMagicLinkEmail(to, url) {
       <p><a href="${url}">${url}</a></p>
     </div>
   `;
+
   const info = await transporter.sendMail({
     from: process.env.EMAIL_FROM || process.env.EMAIL_USER,
     to,
     subject: "Inicia sesión con tu enlace mágico",
     html,
   });
+
   return { id: info.messageId };
 }
