@@ -4,7 +4,7 @@ import cors from "cors";
 const app = express();
 
 const allowedOrigins = [
-    "https://frontuser.vercel.app",
+    "https://frontendusuario.vercel.app",
     "http://localhost:5173",
 ];
 
