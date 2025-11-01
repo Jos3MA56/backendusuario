@@ -1,38 +1,20 @@
-import fs from "fs";
 import nodemailer from "nodemailer";
 
-let ca = null;
-if (process.env.NODE_ENV !== "development") {
-  try {
-    ca = fs.readFileSync("C:/Users/Anton/Downloads/cer.cer");
-  } catch {
-    console.warn("⚠️ Certificado no encontrado, continuando sin CA personalizada");
-  }
-}
-
 const transporter = nodemailer.createTransport({
-  host: "smtp.gmail.com",
-  port: 465,
-  secure: true,
-  auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
-  tls: { ca: ca ? [ca] : undefined, minVersion: "TLSv1.2" },
+  host: process.env.SMTP_HOST,    // smtp.mailtrap.io
+  port: Number(process.env.SMTP_PORT || 465),
+  secure: false,
+  auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+  connectionTimeout: 10000,
+  socketTimeout: 10000,
 });
 
 export async function sendMagicLinkEmail(to, url) {
-  const html = `
-    <div style="font-family:Arial,Helvetica,sans-serif;line-height:1.5;">
-      <h2>Tu enlace mágico</h2>
-      <p>Haz clic para iniciar sesión. Este enlace expira en <b>15 minutos</b>.</p>
-      <p><a href="${url}">${url}</a></p>
-    </div>
-  `;
-
   const info = await transporter.sendMail({
-    from: process.env.EMAIL_FROM || process.env.EMAIL_USER,
+    from: process.env.EMAIL_FROM,
     to,
-    subject: "Inicia sesión con tu enlace mágico",
-    html,
+    subject: "Tu enlace mágico",
+    html: `<a href="${url}">${url}</a>`,
   });
-
   return { id: info.messageId };
 }
