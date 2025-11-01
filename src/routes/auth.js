@@ -132,14 +132,12 @@ router.post("/logout", async (req, res) => {
   }
 });
 
-// ⬇️ pega esto en lugar de tu handler actual
 router.post("/magic-link", async (req, res) => {
   try {
     const { correo } = req.body;
     if (!correo) return res.status(400).json({ error: "Falta correo" });
 
     const user = await User.findOne({ correo });
-    // responde ok aunque no exista (no filtra información)
     if (!user || user.isActive === false) return res.json({ ok: true });
 
     const raw = crypto.randomBytes(32).toString("hex");
@@ -155,34 +153,35 @@ router.post("/magic-link", async (req, res) => {
     });
 
     const APP_ORIGIN = process.env.APP_ORIGIN;
-    if (!APP_ORIGIN) {
-      console.error("magic-link error: falta APP_ORIGIN");
-      return res.status(500).json({ error: "Config APP_ORIGIN faltante" });
-    }
+    if (!APP_ORIGIN) return res.status(500).json({ error: "Config APP_ORIGIN faltante" });
 
     const url = `${APP_ORIGIN}/magic?token=${raw}&email=${encodeURIComponent(correo)}`;
 
-    try {
-      // Opcional pero útil para detectar mala config de SMTP
-      await transporter.verify();
-      await transporter.sendMail({
-        to: correo,
-        from: process.env.MAIL_FROM || process.env.SMTP_USER,
-        subject: "Tu enlace de acceso",
-        html: `<p>Haz clic para entrar (expira en 15 min):</p>
-               <p><a href="${url}">${url}</a></p>`
-      });
-    } catch (smtpErr) {
-      console.error("magic-link SMTP error:", smtpErr);
-      return res.status(500).json({ error: "Fallo al enviar correo" });
-    }
+    // ⏱️ Timeout de envío (7s)
+    const sendPromise = transporter.sendMail({
+      to: correo,
+      from: process.env.MAIL_FROM || process.env.SMTP_USER,
+      subject: "Tu enlace de acceso",
+      html: `<p>Haz clic para entrar (expira en 15 min):</p>
+             <p><a href="${url}">${url}</a></p>`
+    });
+
+    await Promise.race([
+      sendPromise,
+      new Promise((_, rej) => setTimeout(() => rej(new Error("SMTP timeout")), 7000))
+    ]);
 
     return res.json({ ok: true });
   } catch (err) {
     console.error("magic-link error:", err);
+    // Diferencia si el fallo fue por SMTP (para que lo veas en el front)
+    if (String(err.message || "").includes("SMTP")) {
+      return res.status(500).json({ error: "Fallo al enviar correo" });
+    }
     return res.status(500).json({ error: "Error en el servidor" });
   }
 });
+
 
 
 router.post("/magic/verify", async (req, res) => {
