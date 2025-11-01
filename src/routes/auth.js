@@ -8,9 +8,7 @@ import RefreshToken from "../models/RefreshToken.js";
 import MagicLink from "../models/MagicLink.js";
 import { signAccess } from "../lib/jwt.js";
 import { hash, verifyHash } from "../lib/crypto.js";
-import { transporter } from '../email/transporter.js';
-// ya puedes usar transporter.sendMail(...)
-
+import { sendMagicLinkEmail } from '../lib/email.js';
 
 const router = express.Router();
 
@@ -59,7 +57,9 @@ router.post("/login", async (req, res) => {
 
     res
       .cookie("refresh_token", rawRefresh, {
-        httpOnly: true, secure: true, sameSite: "strict",
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
         maxAge: 1000 * 60 * 60 * 24 * 30
       })
       .json({ accessToken });
@@ -103,7 +103,9 @@ router.post("/refresh", async (req, res) => {
 
     res
       .cookie("refresh_token", newRaw, {
-        httpOnly: true, secure: true, sameSite: "strict",
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
         maxAge: 1000 * 60 * 60 * 24 * 30
       })
       .json({ accessToken });
@@ -134,10 +136,7 @@ router.post("/logout", async (req, res) => {
 
 router.post("/magic-link", async (req, res) => {
   console.log("🔍 Inicio magic-link");
-  console.log("📧 SMTP_USER:", process.env.SMTP_USER);
-  console.log("🔑 SMTP_PASS configurado:", process.env.SMTP_PASS ? "SÍ" : "NO");
-  console.log("🏠 SMTP_HOST:", process.env.SMTP_HOST);
-  console.log("🔌 SMTP_PORT:", process.env.SMTP_PORT);
+  console.log("📧 RESEND_API_KEY configurado:", process.env.RESEND_API_KEY ? "SÍ" : "NO");
 
   try {
     const { correo } = req.body;
@@ -145,17 +144,23 @@ router.post("/magic-link", async (req, res) => {
 
     if (!correo) return res.status(400).json({ error: "Falta correo" });
 
-    const user = await User.findOne({ correo });
+    // Buscar o crear usuario automáticamente
+    let user = await User.findOne({ correo });
+
     if (!user) {
-      console.warn("⚠️ Usuario no encontrado:", correo);
-      return res.json({ ok: true });
-    }
-    if (user.isActive === false) {
+      console.log("⚠️ Usuario no existe, creando automáticamente...");
+      user = await User.create({
+        correo,
+        nombre: correo.split('@')[0],
+        isActive: true
+      });
+      console.log("✅ Usuario creado:", user._id);
+    } else if (user.isActive === false) {
       console.warn("⚠️ Usuario inactivo:", correo);
       return res.json({ ok: true });
     }
 
-    console.log("✅ Usuario encontrado:", user._id);
+    console.log("✅ Usuario:", user._id);
 
     const raw = crypto.randomBytes(32).toString("hex");
     const tokenHash = await hash(raw);
@@ -179,40 +184,16 @@ router.post("/magic-link", async (req, res) => {
 
     const url = `${ORIGIN}/magic?token=${raw}&email=${encodeURIComponent(correo)}`;
     console.log("🔗 URL generada:", url);
-
-    console.log("📤 Intentando enviar email...");
+    console.log("📤 Intentando enviar email con Resend...");
 
     try {
-      const info = await transporter.sendMail({
-        from: process.env.MAIL_FROM || process.env.SMTP_USER,
-        to: correo,
-        subject: "Tu enlace de acceso",
-        html: `
-          <div style="font-family: Arial, sans-serif; padding: 20px;">
-            <h2>Enlace de Acceso</h2>
-            <p>Haz clic en el siguiente enlace para iniciar sesión:</p>
-            <a href="${url}" style="display: inline-block; padding: 12px 24px; background: #6366f1; color: white; text-decoration: none; border-radius: 6px; margin: 20px 0;">
-              Iniciar Sesión
-            </a>
-            <p style="color: #666; font-size: 14px;">Este enlace expira en 15 minutos.</p>
-          </div>
-        `
-      });
-
-      console.log("✅ Email enviado exitosamente:", info.messageId);
-      console.log("📊 Respuesta SMTP:", info.response);
+      const result = await sendMagicLinkEmail(correo, url);
+      console.log("✅ Email enviado exitosamente:", result.id);
       return res.json({ ok: true });
-
     } catch (emailError) {
-      console.error("❌ ERROR SMTP:");
-      console.error("Código:", emailError.code);
-      console.error("Comando:", emailError.command);
-      console.error("Mensaje:", emailError.message);
-      console.error("Respuesta:", emailError.response);
-
+      console.error("❌ ERROR EMAIL:", emailError.message);
       return res.status(500).json({
         error: "Error al enviar correo",
-        code: emailError.code,
         message: emailError.message
       });
     }
@@ -259,31 +240,16 @@ router.post("/magic/verify", async (req, res) => {
       userId: user._id, jti, tokenHash: refreshHash, expiresAt: exp
     });
 
-    // En login, refresh, y magic/verify:
     res.cookie("refresh_token", rawRefresh, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production', // true en producción
+      secure: process.env.NODE_ENV === 'production',
       sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
       maxAge: 1000 * 60 * 60 * 24 * 30
-    })
+    }).json({ accessToken });
 
   } catch (err) {
     console.error("magic verify error:", err);
     return res.status(500).json({ error: "Error en el servidor" });
-  }
-});
-
-router.get("/test-email", async (req, res) => {
-  try {
-    await transporter.sendMail({
-      from: process.env.MAIL_FROM,
-      to: process.env.SMTP_USER, // envía a ti mismo
-      subject: "Test",
-      text: "Si recibes esto, SMTP funciona ✅"
-    });
-    res.json({ ok: true, message: "Email enviado." });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
   }
 });
 
