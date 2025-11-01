@@ -30,4 +30,5 @@ app.get("/health", (_, res) => res.status(200).send("ok"));
 
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`API escuchando en ${PORT}`));
+app.listen(PORT, '0.0.0.0', () => console.log(`API on ${PORT}`));
+

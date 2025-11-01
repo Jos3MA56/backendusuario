@@ -4,8 +4,13 @@
   "type": "module",
   "scripts": {
     "dev": "node --watch server.js",
-    "start": "node server.js",
-    "build": "echo \"no build step for api\""
+    "scripts": {
+      "start": "node server.js",
+      "build": "tsc"
+    },
+    "engines": {
+      "node": "20.x"
+    }
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
