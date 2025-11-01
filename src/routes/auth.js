@@ -140,14 +140,14 @@ router.post("/magic-link", async (req, res) => {
     const user = await User.findOne({ correo });
     if (!user) {
       console.warn("magic-link: correo no encontrado:", correo);
-      // no reveles existencia del correo al cliente
-      return res.json({ ok: true });
+      return res.json({ ok: true }); // no revelar existencia
     }
     if (user.isActive === false) {
       console.warn("magic-link: usuario inactivo:", correo);
       return res.json({ ok: true });
     }
 
+    // Generar token y guardar hash
     const raw = crypto.randomBytes(32).toString("hex");
     const tokenHash = await hash(raw);
     const expires = new Date(Date.now() + 1000 * 60 * 15);
@@ -160,32 +160,43 @@ router.post("/magic-link", async (req, res) => {
       userAgent: req.headers["user-agent"] || ""
     });
 
+    // Construir URL
     const ORIGIN = process.env.APP_ORIGIN;
     if (!ORIGIN) {
       console.error("magic-link error: falta APP_ORIGIN");
       return res.status(500).json({ error: "Config APP_ORIGIN faltante" });
     }
-
     const url = `${ORIGIN}/magic?token=${raw}&email=${encodeURIComponent(correo)}`;
 
-    // Útil en dev: imprime el enlace
     if (process.env.NODE_ENV !== "production") {
       console.log("MAGIC URL DEV:", url);
     }
 
-    // Envío real
-    await transporter.sendMail({
-      to: correo,
-      from: process.env.MAIL_FROM || process.env.SMTP_USER, // que coincida con SMTP_USER para Gmail
-      subject: "Tu enlace de acceso",
-      html: `<p>Haz clic para entrar (expira en 15 min):</p>
-             <p><a href="${url}">${url}</a></p>`
-    });
+    // Enviar correo
+    try {
+      await transporter.sendMail({
+        to: correo,
+        from: process.env.MAIL_FROM || process.env.SMTP_USER, // = SMTP_USER (Gmail)
+        subject: "Tu enlace de acceso",
+        html: `<p>Haz clic para entrar (expira en 15 min):</p>
+               <p><a href="${url}">${url}</a></p>`
+      });
+      console.log("magic-link: enviado a", correo);
+      return res.json({ ok: true });
+    } catch (e) {
+      console.error("magic-link SMTP error:", e);
+      // TEMPORAL: devolver detalles para diagnosticar (quitar en producción)
+      return res.status(500).json({
+        error: "SMTP",
+        code: e.code,
+        command: e.command,
+        response: e.response,
+        message: e.message,
+      });
+    }
 
-    console.log("magic-link: enviado a", correo);
-    return res.json({ ok: true });
   } catch (err) {
-    console.error("magic-link SMTP/general error:", err);
+    console.error("magic-link general error:", err);
     const msg = String(err?.message || "");
     if (msg.includes("EAUTH")) return res.status(500).json({ error: "SMTP: credenciales inválidas" });
     if (msg.includes("ENOTFOUND") || msg.includes("ECONNREFUSED")) return res.status(500).json({ error: "SMTP: host/puerto incorrectos" });
@@ -193,8 +204,6 @@ router.post("/magic-link", async (req, res) => {
     return res.status(500).json({ error: "No se pudo enviar el correo" });
   }
 });
-
-
 
 
 router.post("/magic/verify", async (req, res) => {
