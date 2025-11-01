@@ -138,27 +138,27 @@ router.post("/magic-link", async (req, res) => {
     if (!correo) return res.status(400).json({ error: "Falta correo" });
 
     const user = await User.findOne({ correo });
-    if (!user || user.isActive === false) return res.json({ ok: true });
+    if (!user || user.isActive === false) return res.json({ ok: true }); // no filtra info
 
     const raw = crypto.randomBytes(32).toString("hex");
     const tokenHash = await hash(raw);
     const expires = new Date(Date.now() + 1000 * 60 * 15);
 
     await MagicLink.create({
-      userId: user._id,
-      tokenHash,
-      expiresAt: expires,
-      ip: req.ip,
-      userAgent: req.headers["user-agent"] || ""
+      userId: user._id, tokenHash, expiresAt: expires,
+      ip: req.ip, userAgent: req.headers["user-agent"] || ""
     });
 
     const APP_ORIGIN = process.env.APP_ORIGIN;
-    if (!APP_ORIGIN) return res.status(500).json({ error: "Config APP_ORIGIN faltante" });
+    if (!APP_ORIGIN) {
+      console.error("magic-link error: falta APP_ORIGIN");
+      return res.status(500).json({ error: "Config APP_ORIGIN faltante" });
+    }
 
     const url = `${APP_ORIGIN}/magic?token=${raw}&email=${encodeURIComponent(correo)}`;
 
-    // ⏱️ Timeout de envío (7s)
-    const sendPromise = transporter.sendMail({
+    // ENVÍO CON TIMEOUT (7s)
+    const send = transporter.sendMail({
       to: correo,
       from: process.env.MAIL_FROM || process.env.SMTP_USER,
       subject: "Tu enlace de acceso",
@@ -167,17 +167,17 @@ router.post("/magic-link", async (req, res) => {
     });
 
     await Promise.race([
-      sendPromise,
-      new Promise((_, rej) => setTimeout(() => rej(new Error("SMTP timeout")), 7000))
+      send,
+      new Promise((_, rej) => setTimeout(() => rej(new Error("SMTP_TIMEOUT")), 7000))
     ]);
 
     return res.json({ ok: true });
   } catch (err) {
     console.error("magic-link error:", err);
-    // Diferencia si el fallo fue por SMTP (para que lo veas en el front)
-    if (String(err.message || "").includes("SMTP")) {
-      return res.status(500).json({ error: "Fallo al enviar correo" });
-    }
+    const msg = String(err?.message || "");
+    if (msg.includes("EAUTH")) return res.status(500).json({ error: "SMTP: credenciales inválidas" });
+    if (msg.includes("ENOTFOUND") || msg.includes("ECONNREFUSED")) return res.status(500).json({ error: "SMTP: host/puerto incorrectos" });
+    if (msg.includes("SMTP_TIMEOUT")) return res.status(500).json({ error: "SMTP: timeout" });
     return res.status(500).json({ error: "Error en el servidor" });
   }
 });
