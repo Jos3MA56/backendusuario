@@ -29,7 +29,7 @@ app.options("*", cors());
 app.use(express.json());
 app.use(cookieParser());
 
-app.get("/", (_req, res) => res.send("✅ API funcionando correctamente"));
+app.get("/", (_req, res) => res.send("✅ API funcionando correctamente."));
 
 app.use("/auth", authRouter);
 
