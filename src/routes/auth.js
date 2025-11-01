@@ -259,12 +259,13 @@ router.post("/magic/verify", async (req, res) => {
       userId: user._id, jti, tokenHash: refreshHash, expiresAt: exp
     });
 
+    // En login, refresh, y magic/verify:
     res.cookie("refresh_token", rawRefresh, {
       httpOnly: true,
-      secure: true,
-      sameSite: "none",   // ← dominios distintos (Vercel ↔ Render)
+      secure: process.env.NODE_ENV === 'production', // true en producción
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
       maxAge: 1000 * 60 * 60 * 24 * 30
-    }).json({ accessToken });
+    })
 
   } catch (err) {
     console.error("magic verify error:", err);
