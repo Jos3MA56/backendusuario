@@ -133,19 +133,29 @@ router.post("/logout", async (req, res) => {
 });
 
 router.post("/magic-link", async (req, res) => {
+  console.log("🔍 Inicio magic-link");
+  console.log("📧 SMTP_USER:", process.env.SMTP_USER);
+  console.log("🔑 SMTP_PASS configurado:", process.env.SMTP_PASS ? "SÍ" : "NO");
+  console.log("🏠 SMTP_HOST:", process.env.SMTP_HOST);
+  console.log("🔌 SMTP_PORT:", process.env.SMTP_PORT);
+
   try {
     const { correo } = req.body;
+    console.log("📬 Correo recibido:", correo);
+
     if (!correo) return res.status(400).json({ error: "Falta correo" });
 
     const user = await User.findOne({ correo });
     if (!user) {
-      console.warn("magic-link: correo no encontrado:", correo);
+      console.warn("⚠️ Usuario no encontrado:", correo);
       return res.json({ ok: true });
     }
     if (user.isActive === false) {
-      console.warn("magic-link: usuario inactivo:", correo);
+      console.warn("⚠️ Usuario inactivo:", correo);
       return res.json({ ok: true });
     }
+
+    console.log("✅ Usuario encontrado:", user._id);
 
     const raw = crypto.randomBytes(32).toString("hex");
     const tokenHash = await hash(raw);
@@ -159,16 +169,18 @@ router.post("/magic-link", async (req, res) => {
       userAgent: req.headers["user-agent"] || ""
     });
 
+    console.log("✅ MagicLink creado en BD");
+
     const ORIGIN = process.env.APP_ORIGIN;
     if (!ORIGIN) {
-      console.error("magic-link error: falta APP_ORIGIN");
+      console.error("❌ Falta APP_ORIGIN");
       return res.status(500).json({ error: "Config APP_ORIGIN faltante" });
     }
 
     const url = `${ORIGIN}/magic?token=${raw}&email=${encodeURIComponent(correo)}`;
+    console.log("🔗 URL generada:", url);
 
-    console.log("📧 Intentando enviar correo a:", correo);
-    console.log("🔗 URL mágica:", url);
+    console.log("📤 Intentando enviar email...");
 
     try {
       const info = await transporter.sendMail({
@@ -183,28 +195,33 @@ router.post("/magic-link", async (req, res) => {
               Iniciar Sesión
             </a>
             <p style="color: #666; font-size: 14px;">Este enlace expira en 15 minutos.</p>
-            <p style="color: #666; font-size: 12px;">Si no solicitaste este enlace, ignora este correo.</p>
           </div>
         `
       });
 
-      console.log("✅ Correo enviado:", info.messageId);
+      console.log("✅ Email enviado exitosamente:", info.messageId);
+      console.log("📊 Respuesta SMTP:", info.response);
       return res.json({ ok: true });
 
     } catch (emailError) {
-      console.error("❌ SMTP Error:", emailError);
+      console.error("❌ ERROR SMTP:");
+      console.error("Código:", emailError.code);
+      console.error("Comando:", emailError.command);
+      console.error("Mensaje:", emailError.message);
+      console.error("Respuesta:", emailError.response);
+
       return res.status(500).json({
         error: "Error al enviar correo",
-        details: process.env.NODE_ENV !== "production" ? {
-          code: emailError.code,
-          command: emailError.command,
-          response: emailError.response
-        } : undefined
+        code: emailError.code,
+        message: emailError.message
       });
     }
   } catch (err) {
-    console.error("magic-link error:", err);
-    return res.status(500).json({ error: "Error en el servidor" });
+    console.error("❌ ERROR GENERAL:", err);
+    return res.status(500).json({
+      error: "Error en el servidor",
+      message: err.message
+    });
   }
 });
 
