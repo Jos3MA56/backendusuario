@@ -157,14 +157,17 @@ router.post("/magic-link", async (req, res) => {
 
     const url = `${APP_ORIGIN}/magic?token=${raw}&email=${encodeURIComponent(correo)}`;
 
-    // ENVÍO CON TIMEOUT (7s)
-    const send = transporter.sendMail({
+    // tras guardar MagicLink y construir `url`
+    transporter.sendMail({
       to: correo,
       from: process.env.MAIL_FROM || process.env.SMTP_USER,
       subject: "Tu enlace de acceso",
       html: `<p>Haz clic para entrar (expira en 15 min):</p>
-             <p><a href="${url}">${url}</a></p>`
-    });
+         <p><a href="${url}">${url}</a></p>`
+    }).catch(e => console.error("magic-link SMTP error:", e));
+
+    return res.json({ ok: true }); // responde inmediato
+
 
     await Promise.race([
       send,
@@ -218,12 +221,13 @@ router.post("/magic/verify", async (req, res) => {
       userId: user._id, jti, tokenHash: refreshHash, expiresAt: exp
     });
 
-    res
-      .cookie("refresh_token", rawRefresh, {
-        httpOnly: true, secure: true, sameSite: "strict",
-        maxAge: 1000 * 60 * 60 * 24 * 30
-      })
-      .json({ accessToken });
+    res.cookie("refresh_token", rawRefresh, {
+      httpOnly: true,
+      secure: true,
+      sameSite: "none",   // ← dominios distintos (Vercel ↔ Render)
+      maxAge: 1000 * 60 * 60 * 24 * 30
+    }).json({ accessToken });
+
   } catch (err) {
     console.error("magic verify error:", err);
     return res.status(500).json({ error: "Error en el servidor" });
