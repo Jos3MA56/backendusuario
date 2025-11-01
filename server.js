@@ -15,7 +15,10 @@ await mongoose.connect(process.env.MONGO_URI, { autoIndex: true });
 
 const app = express();
 
-app.use(cors({ origin: process.env.APP_ORIGIN, credentials: true }));
+app.use(cors({
+    origin: [process.env.APP_ORIGIN, "http://localhost:5173"],
+    credentials: true
+}));
 app.use(express.json());
 app.use(cookieParser());
 
@@ -23,6 +26,8 @@ app.use("/auth", authRouter);
 app.use("/profile", profileRouter);
 
 app.get("/", (_req, res) => res.json({ ok: true, service: "auth-backend" }));
+app.get("/health", (_, res) => res.status(200).send("ok"));
 
-const port = process.env.PORT || 3000;
-app.listen(port, () => console.log(`✅ API escuchando en http://localhost:${port}`));
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`API escuchando en ${PORT}`));
