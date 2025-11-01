@@ -31,7 +31,7 @@ app.get("/", (req, res) => {
     res.send("✅ API funcionando correctamente");
 });
 
-app.post("/auth/login", (req, res) => {
+app.post("/login", (req, res) => {
     const { email, password } = req.body;
 
     if (!email || !password) {
