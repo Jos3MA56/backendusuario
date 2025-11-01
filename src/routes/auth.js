@@ -263,7 +263,7 @@ router.get("/test-email", async (req, res) => {
       subject: "Test",
       text: "Si recibes esto, SMTP funciona ✅"
     });
-    res.json({ ok: true, message: "Email enviado" });
+    res.json({ ok: true, message: "Email enviado." });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
