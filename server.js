@@ -3,37 +3,47 @@ import cors from "cors";
 
 const app = express();
 
-// 🔴 PON AQUÍ tus dominios reales
 const allowedOrigins = [
+    "https://frontuser.vercel.app",
     "http://localhost:5173",
-    "https://frontusuario.vercel.app"
 ];
 
-app.use((req, res, next) => {
-    // Si quieres ver qué origin llega
-    // console.log("Origin:", req.headers.origin);
-    next();
-});
+app.use(
+    cors({
+        origin: (origin, callback) => {
+            if (!origin || allowedOrigins.includes(origin)) {
+                return callback(null, true);
+            } else {
+                return callback(new Error("Not allowed by CORS"));
+            }
+        },
+        methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        allowedHeaders: ["Content-Type", "Authorization"],
+        credentials: true,
+    })
+);
 
-app.use(cors({
-    origin: (origin, cb) => {
-        // permite Postman/Thunder (sin origin) y tus dominios
-        if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
-        cb(new Error("CORS blocked"));
-    },
-    credentials: true, // si usas cookies/sesión
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"]
-}));
-
-// IMPORTANTÍSIMO: responder preflight ANTES de auth/routers
 app.options("*", cors());
-
-// … tus otros middlewares
 app.use(express.json());
 
-// … tus rutas
-// app.use("/auth", authRouter);
+
+app.get("/", (req, res) => {
+    res.send("✅ API funcionando correctamente");
+});
+
+app.post("/auth/login", (req, res) => {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+        return res.status(400).json({ message: "Faltan credenciales" });
+    }
+
+    if (email === "admin@demo.com" && password === "123456") {
+        return res.json({ message: "Login exitoso", token: "fake-jwt-token" });
+    } else {
+        return res.status(401).json({ message: "Credenciales incorrectas" });
+    }
+});
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, "0.0.0.0", () => console.log(`API on ${PORT}`));
+app.listen(PORT, () => console.log(`Servidor corriendo en el puerto ${PORT}`));
