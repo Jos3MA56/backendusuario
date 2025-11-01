@@ -2,7 +2,7 @@
 import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
-import authRouter from "./routes/auth.js";
+import authRouter from "./src/routes/auth.js";
 
 const app = express();
 app.set("trust proxy", 1);
