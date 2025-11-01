@@ -11,6 +11,5 @@ const magicLinkSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
-magicLinkSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
 export default mongoose.model("MagicLink", magicLinkSchema);

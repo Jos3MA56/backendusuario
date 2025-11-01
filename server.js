@@ -1,34 +1,39 @@
-import 'dotenv/config'; // debe ir ANTES de cualquier import que lea process.env
-
-import dotenv from "dotenv";
 import express from "express";
-import cookieParser from "cookie-parser";
-import mongoose from "mongoose";
 import cors from "cors";
-
-import authRouter from "./src/routes/auth.js";
-import profileRouter from "./src/routes/profile.js";
-
-dotenv.config();
-
-await mongoose.connect(process.env.MONGO_URI, { autoIndex: true });
 
 const app = express();
 
+// 🔴 PON AQUÍ tus dominios reales
+const allowedOrigins = [
+    "http://localhost:5173",
+    "https://frontusuario.vercel.app"
+];
+
+app.use((req, res, next) => {
+    // Si quieres ver qué origin llega
+    // console.log("Origin:", req.headers.origin);
+    next();
+});
+
 app.use(cors({
-    origin: [process.env.APP_ORIGIN, "http://localhost:5173"],
-    credentials: true
+    origin: (origin, cb) => {
+        // permite Postman/Thunder (sin origin) y tus dominios
+        if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
+        cb(new Error("CORS blocked"));
+    },
+    credentials: true, // si usas cookies/sesión
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"]
 }));
+
+// IMPORTANTÍSIMO: responder preflight ANTES de auth/routers
+app.options("*", cors());
+
+// … tus otros middlewares
 app.use(express.json());
-app.use(cookieParser());
 
-app.use("/auth", authRouter);
-app.use("/profile", profileRouter);
-
-app.get("/", (_req, res) => res.json({ ok: true, service: "auth-backend" }));
-app.get("/health", (_, res) => res.status(200).send("ok"));
-
+// … tus rutas
+// app.use("/auth", authRouter);
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, '0.0.0.0', () => console.log(`API on ${PORT}`));
-
+app.listen(PORT, "0.0.0.0", () => console.log(`API on ${PORT}`));
