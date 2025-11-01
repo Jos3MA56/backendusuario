@@ -1,20 +1,20 @@
 import fs from "fs";
 import nodemailer from "nodemailer";
 
-// Usa SLASHES normales 👇 (sirven en Windows también)
-const CA_PATH = "C:/Users/Anton/Downloads/cer.cer";
-// o bien escapa backslashes:
-// const CA_PATH = "C:\\Users\\Anton\\Downloads\\cer.cer";
+let ca = null;
+if (process.env.NODE_ENV !== "production") {
+  ca = fs.readFileSync("C:/Users/Anton/Downloads/cer.cer");
+}
 
-const ca = fs.readFileSync(CA_PATH);
 
-export const transporter = nodemailer.createTransport({
+const transporter = nodemailer.createTransport({
   host: "smtp.gmail.com",
   port: 465,
   secure: true,
   auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
-  tls: { ca: [ca], minVersion: "TLSv1.2" },
+  tls: { minVersion: "TLSv1.2" }, // sin ca
 });
+
 
 export async function sendMagicLinkEmail(to, url) {
   const html = `
