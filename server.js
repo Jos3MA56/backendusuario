@@ -1,4 +1,5 @@
 // server.js (en la raíz)
+import 'dotenv/config'; // ← AGREGA ESTA LÍNEA AL INICIO
 import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
@@ -9,7 +10,13 @@ const app = express();
 app.set("trust proxy", 1);
 
 // Conexión a Mongo
-const MONGO_URI = process.env.MONGO_URI; // asegúrate de configurarlo en Render
+const MONGO_URI = process.env.MONGO_URI || process.env.MONGODB_URI;
+
+if (!MONGO_URI) {
+    console.error("❌ ERROR: MONGO_URI no está definido en las variables de entorno");
+    process.exit(1);
+}
+
 mongoose.set("strictQuery", true);
 mongoose.connect(MONGO_URI)
     .then(() => console.log("✅ MongoDB conectado"))
@@ -19,7 +26,11 @@ mongoose.connect(MONGO_URI)
     });
 
 app.use(cors({
-    origin(origin, cb) { return (!origin || ["https://frontendusuario.vercel.app", "http://localhost:5173"].includes(origin)) ? cb(null, true) : cb(new Error("Not allowed by CORS")); },
+    origin(origin, cb) {
+        return (!origin || ["https://frontendusuario.vercel.app", "http://localhost:5173"].includes(origin))
+            ? cb(null, true)
+            : cb(new Error("Not allowed by CORS"));
+    },
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
@@ -33,4 +44,4 @@ app.get("/", (_req, res) => res.send("✅ API funcionando correctamente"));
 app.use("/auth", authRouter);
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`API en ${PORT}`));
+app.listen(PORT, () => console.log(`🚀 API en puerto ${PORT}`));

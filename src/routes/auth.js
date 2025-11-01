@@ -166,40 +166,47 @@ router.post("/magic-link", async (req, res) => {
     }
 
     const url = `${ORIGIN}/magic?token=${raw}&email=${encodeURIComponent(correo)}`;
-    if (process.env.NODE_ENV !== "production") console.log("MAGIC URL DEV:", url);
+
+    console.log("📧 Intentando enviar correo a:", correo);
+    console.log("🔗 URL mágica:", url);
 
     try {
-      await transporter.sendMail({
+      const info = await transporter.sendMail({
+        from: process.env.MAIL_FROM || process.env.SMTP_USER,
         to: correo,
-        from: process.env.MAIL_FROM || process.env.SMTP_USER, // = SMTP_USER en Gmail
         subject: "Tu enlace de acceso",
-        html: `<p>Haz clic para entrar (expira en 15 min):</p>
-               <p><a href="${url}">${url}</a></p>`
+        html: `
+          <div style="font-family: Arial, sans-serif; padding: 20px;">
+            <h2>Enlace de Acceso</h2>
+            <p>Haz clic en el siguiente enlace para iniciar sesión:</p>
+            <a href="${url}" style="display: inline-block; padding: 12px 24px; background: #6366f1; color: white; text-decoration: none; border-radius: 6px; margin: 20px 0;">
+              Iniciar Sesión
+            </a>
+            <p style="color: #666; font-size: 14px;">Este enlace expira en 15 minutos.</p>
+            <p style="color: #666; font-size: 12px;">Si no solicitaste este enlace, ignora este correo.</p>
+          </div>
+        `
       });
-      console.log("magic-link: enviado a", correo);
+
+      console.log("✅ Correo enviado:", info.messageId);
       return res.json({ ok: true });
-    } catch (e) {
-      console.error("magic-link SMTP error:", e);
-      // TEMPORAL: devolvemos detalles para que los veas en la pestaña Network
+
+    } catch (emailError) {
+      console.error("❌ SMTP Error:", emailError);
       return res.status(500).json({
-        error: "SMTP",
-        code: e.code,
-        command: e.command,
-        response: e.response,
-        message: e.message,
+        error: "Error al enviar correo",
+        details: process.env.NODE_ENV !== "production" ? {
+          code: emailError.code,
+          command: emailError.command,
+          response: emailError.response
+        } : undefined
       });
     }
   } catch (err) {
-    console.error("magic-link general error:", err);
-    const msg = String(err?.message || "");
-    if (msg.includes("EAUTH")) return res.status(500).json({ error: "SMTP: credenciales inválidas" });
-    if (msg.includes("ENOTFOUND") || msg.includes("ECONNREFUSED")) return res.status(500).json({ error: "SMTP: host/puerto incorrectos" });
-    if (msg.toUpperCase().includes("TIMEOUT")) return res.status(500).json({ error: "SMTP: timeout" });
-    return res.status(500).json({ error: "No se pudo enviar el correo" });
+    console.error("magic-link error:", err);
+    return res.status(500).json({ error: "Error en el servidor" });
   }
 });
-
-
 
 router.post("/magic/verify", async (req, res) => {
   try {
@@ -245,6 +252,20 @@ router.post("/magic/verify", async (req, res) => {
   } catch (err) {
     console.error("magic verify error:", err);
     return res.status(500).json({ error: "Error en el servidor" });
+  }
+});
+
+router.get("/test-email", async (req, res) => {
+  try {
+    await transporter.sendMail({
+      from: process.env.MAIL_FROM,
+      to: process.env.SMTP_USER, // envía a ti mismo
+      subject: "Test",
+      text: "Si recibes esto, SMTP funciona ✅"
+    });
+    res.json({ ok: true, message: "Email enviado" });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
 });
 
