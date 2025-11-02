@@ -1,44 +1,57 @@
-// routes/magicAuth.js
-import express from "express";
-import crypto from "crypto";
-import { v4 as uuidv4 } from "uuid";
+// src/routes/auth.js
+import { Router } from "express";
 import bcrypt from "bcryptjs";
+import { v4 as uuidv4 } from "uuid";
 
 import User from "../models/User.js";
 import MagicLink from "../models/MagicLink.js";
 import RefreshToken from "../models/RefreshToken.js";
 
-import { signAccess } from "../lib/jwt.js";
+import { auth } from "../middlewares/auth.js";
+
+import { signAccess, verifyAccess } from "../lib/jwt.js";
 import { hash, verifyHash } from "../lib/crypto.js";
 import { sendMagicLinkEmail } from "../lib/email.js";
 
-const router = express.Router();
+const router = Router();
 
-const MAGIC_TTL_MS = 1000 * 60 * 15;             // 15 min
-const REFRESH_TTL_MS = 1000 * 60 * 60 * 24 * 30;   // 30 días
+const MAGIC_TTL_MS = 1000 * 60 * 15;           // 15 min
+const REFRESH_TTL_MS = 1000 * 60 * 60 * 24 * 30; // 30 días
 
 const refreshCookieOpts = () => ({
   httpOnly: true,
   secure: process.env.NODE_ENV === "production",
   sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
   maxAge: REFRESH_TTL_MS,
+  path: "/",
 });
 
-/* ===========================
- * REGISTER (usuario / password)
- * =========================== */
+const APP_ORIGIN = process.env.APP_ORIGIN || "http://localhost:5173";
+
+// --- middleware access token ---
+function authenticateAccess(req, res, next) {
+  try {
+    const auth = req.headers.authorization || "";
+    const token = auth.startsWith("Bearer ") ? auth.slice(7) : null;
+    if (!token) return res.status(401).json({ error: "Falta access token" });
+    const payload = verifyAccess(token);
+    req.user = { id: payload.sub, email: payload.email };
+    next();
+  } catch {
+    return res.status(401).json({ error: "Token inválido" });
+  }
+}
+
+/* ============ REGISTER ============ */
 router.post("/register", async (req, res) => {
   try {
     const { nombre, apPaterno, apMaterno, telefono, correo, edad, password } = req.body;
-    if (!nombre || !correo || !password) {
-      return res.status(400).json({ error: "Faltan datos requeridos" });
-    }
+    if (!nombre || !correo || !password) return res.status(400).json({ error: "Faltan datos requeridos" });
 
     const exists = await User.findOne({ correo });
     if (exists) return res.status(409).json({ error: "El correo ya está registrado" });
 
     const passwordHash = await bcrypt.hash(password, 10);
-
     const user = await User.create({
       nombre,
       apPaterno: apPaterno || "",
@@ -50,16 +63,14 @@ router.post("/register", async (req, res) => {
       isActive: true,
     });
 
-    return res.status(201).json({ ok: true, userId: user._id });
+    res.status(201).json({ ok: true, userId: user._id });
   } catch (err) {
     console.error("register error:", err);
-    return res.status(500).json({ error: "Error en el servidor" });
+    res.status(500).json({ error: "Error en el servidor" });
   }
 });
 
-/* ===========================
- * LOGIN (usuario / password)
- * =========================== */
+/* ============ LOGIN (password) ============ */
 router.post("/login", async (req, res) => {
   try {
     const { correo, password } = req.body;
@@ -69,11 +80,7 @@ router.post("/login", async (req, res) => {
     if (!user) return res.status(401).json({ error: "Credenciales inválidas" });
 
     if (!user.passwordHash) {
-      // La cuenta pudo haberse creado por enlace mágico sin password
-      return res.status(409).json({
-        error: "Cuenta sin contraseña",
-        detalle: "Esta cuenta fue creada con enlace mágico. Establece una contraseña antes de iniciar sesión por password.",
-      });
+      return res.status(409).json({ error: "Cuenta sin contraseña. Usa enlace mágico o establece una." });
     }
 
     const ok = await bcrypt.compare(password, user.passwordHash);
@@ -81,47 +88,32 @@ router.post("/login", async (req, res) => {
 
     const accessToken = signAccess({ sub: user._id.toString(), email: user.correo });
 
+    // crear refresh rotativo
     const jti = uuidv4();
     const rawRefresh = `${uuidv4()}.${uuidv4()}`;
     const refreshHash = await hash(rawRefresh);
     const exp = new Date(Date.now() + REFRESH_TTL_MS);
 
-    await RefreshToken.create({
-      userId: user._id,
-      jti,
-      tokenHash: refreshHash,
-      expiresAt: exp,
-      revokedAt: null,
-    });
+    await RefreshToken.create({ userId: user._id, jti, tokenHash: refreshHash, expiresAt: exp, revokedAt: null });
 
-    return res
-      .cookie("refresh_token", rawRefresh, refreshCookieOpts())
-      .json({ accessToken });
+    return res.cookie("refresh_token", rawRefresh, refreshCookieOpts()).json({ accessToken });
   } catch (err) {
     console.error("login error:", err);
-    return res.status(500).json({ error: "Error en el servidor" });
+    res.status(500).json({ error: "Error en el servidor" });
   }
 });
 
-/* ===========================
- * ENVIAR ENLACE MÁGICO
- * =========================== */
+/* ============ ENVIAR ENLACE MÁGICO ============ */
 router.post("/magic-link", async (req, res) => {
   try {
     const { correo } = req.body;
     if (!correo) return res.status(400).json({ error: "Falta correo" });
 
     let user = await User.findOne({ correo });
-    if (!user) {
-      user = await User.create({
-        correo,
-        nombre: correo.split("@")[0],
-        isActive: true,
-      });
-    }
+    if (!user) user = await User.create({ correo, nombre: correo.split("@")[0], isActive: true });
     if (user.isActive === false) return res.json({ ok: true });
 
-    const raw = crypto.randomBytes(32).toString("hex");
+    const raw = uuidv4().replace(/-/g, "") + uuidv4().replace(/-/g, "");
     const tokenHash = await hash(raw);
     const expiresAt = new Date(Date.now() + MAGIC_TTL_MS);
 
@@ -134,23 +126,17 @@ router.post("/magic-link", async (req, res) => {
       userAgent: req.headers["user-agent"] || "",
     });
 
-    const ORIGIN = process.env.APP_ORIGIN; // ej: http://localhost:5173
-    if (!ORIGIN) return res.status(500).json({ error: "Config APP_ORIGIN faltante" });
-
-    const url = `${ORIGIN}/magic?token=${raw}&email=${encodeURIComponent(correo)}`;
-
+    const url = `${APP_ORIGIN}/magic?token=${raw}&email=${encodeURIComponent(correo)}`;
     await sendMagicLinkEmail(correo, url);
 
-    return res.json({ ok: true, mensaje: "Enlace enviado" });
+    res.json({ ok: true, mensaje: "Enlace enviado" });
   } catch (err) {
     console.error("magic-link error:", err);
-    return res.status(500).json({ error: "Error al enviar enlace mágico" });
+    res.status(500).json({ error: "Error al enviar enlace mágico" });
   }
 });
 
-/* ===========================
- * VERIFICAR ENLACE MÁGICO
- * =========================== */
+/* ============ VERIFICAR ENLACE MÁGICO ============ */
 router.post("/magic/verify", async (req, res) => {
   try {
     const { token, email, correo } = req.body;
@@ -176,31 +162,22 @@ router.post("/magic/verify", async (req, res) => {
 
     const accessToken = signAccess({ sub: user._id.toString(), email: user.correo });
 
+    // refresh rotativo
     const jti = uuidv4();
     const rawRefresh = `${uuidv4()}.${uuidv4()}`;
     const refreshHash = await hash(rawRefresh);
     const exp = new Date(Date.now() + REFRESH_TTL_MS);
 
-    await RefreshToken.create({
-      userId: user._id,
-      jti,
-      tokenHash: refreshHash,
-      expiresAt: exp,
-      revokedAt: null,
-    });
+    await RefreshToken.create({ userId: user._id, jti, tokenHash: refreshHash, expiresAt: exp, revokedAt: null });
 
-    return res
-      .cookie("refresh_token", rawRefresh, refreshCookieOpts())
-      .json({ accessToken });
+    return res.cookie("refresh_token", rawRefresh, refreshCookieOpts()).json({ accessToken });
   } catch (err) {
     console.error("magic verify error:", err);
-    return res.status(500).json({ error: "Error en el servidor" });
+    res.status(500).json({ error: "Error en el servidor" });
   }
 });
 
-/* ===========================
- * REFRESH (rotación)
- * =========================== */
+/* ============ REFRESH ============ */
 router.post("/refresh", async (req, res) => {
   try {
     const raw = req.cookies?.refresh_token || req.body?.refresh_token;
@@ -217,6 +194,7 @@ router.post("/refresh", async (req, res) => {
     }
     if (!row) return res.status(401).json({ error: "Refresh inválido" });
 
+    // revocar viejo
     await RefreshToken.updateOne({ _id: row._id }, { $set: { revokedAt: new Date() } });
 
     const user = await User.findById(row.userId);
@@ -224,48 +202,53 @@ router.post("/refresh", async (req, res) => {
 
     const accessToken = signAccess({ sub: user._id.toString(), email: user.correo });
 
+    // emitir nuevo refresh
     const jti = uuidv4();
     const newRaw = `${uuidv4()}.${uuidv4()}`;
     const newHash = await hash(newRaw);
     const exp = new Date(Date.now() + REFRESH_TTL_MS);
 
-    await RefreshToken.create({
-      userId: user._id,
-      jti,
-      tokenHash: newHash,
-      expiresAt: exp,
-      revokedAt: null,
-    });
+    await RefreshToken.create({ userId: user._id, jti, tokenHash: newHash, expiresAt: exp, revokedAt: null });
 
-    return res
-      .cookie("refresh_token", newRaw, refreshCookieOpts())
-      .json({ accessToken });
+    return res.cookie("refresh_token", newRaw, refreshCookieOpts()).json({ accessToken });
   } catch (err) {
     console.error("refresh error:", err);
-    return res.status(500).json({ error: "Error en el servidor" });
+    res.status(500).json({ error: "Error en el servidor" });
   }
 });
 
-/* ===========================
- * LOGOUT (revoca refresh actual)
- * =========================== */
+/* ============ LOGOUT ============ */
 router.post("/logout", async (req, res) => {
   try {
     const raw = req.cookies?.refresh_token || req.body?.refresh_token;
     if (raw) {
-      const candidates = await RefreshToken.find({ revokedAt: null }).sort({ createdAt: -1 }).limit(500);
-      for (const r of candidates) {
+      const list = await RefreshToken.find({ revokedAt: null }).sort({ createdAt: -1 }).limit(500);
+      for (const r of list) {
         if (await verifyHash(raw, r.tokenHash)) {
           await RefreshToken.updateOne({ _id: r._id }, { $set: { revokedAt: new Date() } });
           break;
         }
       }
     }
-    res.clearCookie("refresh_token").json({ ok: true });
+    res.clearCookie("refresh_token", { ...refreshCookieOpts(), maxAge: 0 }).json({ ok: true });
   } catch (err) {
     console.error("logout error:", err);
-    return res.status(500).json({ error: "Error en el servidor" });
+    res.status(500).json({ error: "Error en el servidor" });
   }
+});
+
+/* ============ ME (perfil por token) ============ */
+router.get("/me", authenticateAccess, async (req, res) => {
+  const user = await User.findById(req.user.id).select("-passwordHash");
+  if (!user) return res.status(404).json({ error: "Usuario no encontrado" });
+  res.json(user);
+});
+
+router.get("/me", auth, async (req, res) => {
+  res.json({
+    mensaje: "Ruta protegida ✅",
+    user: req.user,
+  });
 });
 
 export default router;

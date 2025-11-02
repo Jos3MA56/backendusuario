@@ -1,15 +1,16 @@
+// src/models/User.js
 import mongoose from "mongoose";
 
 const userSchema = new mongoose.Schema(
   {
-    nombre: { type: String, required: true },
-    apPaterno: { type: String, required: true },
-    apMaterno: { type: String },
-    telefono: { type: String },
-    correo: { type: String, required: true, unique: true, index: true },
+    nombre: { type: String, trim: true },
+    apPaterno: { type: String, trim: true },
+    apMaterno: { type: String, trim: true },
+    telefono: { type: String, trim: true },
     edad: { type: Number },
-    passwordHash: { type: String, required: true },
-    isActive: { type: Boolean, default: true }
+    correo: { type: String, required: true, unique: true, lowercase: true, trim: true },
+    passwordHash: { type: String },
+    isActive: { type: Boolean, default: true },
   },
   { timestamps: true }
 );

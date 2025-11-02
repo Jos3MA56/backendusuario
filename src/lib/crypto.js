@@ -1,9 +1,13 @@
+// src/lib/crypto.js
+// Usamos bcrypt para hash de tokens (enlaces mágicos y refresh aleatorios)
 import bcrypt from "bcryptjs";
 
-export async function hash(raw) {
-    return bcrypt.hash(raw, 10);
+/** Hashea un string (token raw) */
+export async function hash(str) {
+    return bcrypt.hash(str, 10);
 }
 
-export async function verifyHash(raw, hashed) {
-    return bcrypt.compare(raw, hashed);
+/** Verifica string vs hash */
+export async function verifyHash(str, hashed) {
+    return bcrypt.compare(str, hashed);
 }

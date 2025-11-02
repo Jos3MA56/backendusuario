@@ -1,6 +1,7 @@
+// src/models/RefreshToken.js
 import mongoose from "mongoose";
 
-const RefreshTokenSchema = new mongoose.Schema(
+const refreshTokenSchema = new mongoose.Schema(
   {
     userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
     jti: { type: String, required: true },
@@ -11,6 +12,8 @@ const RefreshTokenSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-RefreshTokenSchema.index({ userId: 1, expiresAt: -1 });
+// Para búsquedas y limpieza automática
+refreshTokenSchema.index({ userId: 1, expiresAt: 1 });
+refreshTokenSchema.index({ revokedAt: 1 });
 
-export default mongoose.model("RefreshToken", RefreshTokenSchema);
+export default mongoose.model("RefreshToken", refreshTokenSchema);

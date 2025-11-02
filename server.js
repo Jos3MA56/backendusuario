@@ -1,67 +1,50 @@
+// server.js
 import "dotenv/config";
 import express from "express";
 import mongoose from "mongoose";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 
-import magicAuthRouter from "./src/routes/auth.js";
+import authRouter from "./src/routes/auth.js";
 
 const app = express();
 
-// 🧩 1️⃣ Lista de orígenes permitidos
-const ALLOWED_ORIGINS = [
-    "http://localhost:5173",                    // para desarrollo local
-    "https://frontendusuario.vercel.app",       // 👈 tu frontend en Vercel (producción)
+// === CORS ===
+const ALLOWED = [
+    process.env.APP_ORIGIN || "http://localhost:5173",
 ];
-
-// 🧠 2️⃣ Middleware CORS avanzado
-app.use((req, res, next) => {
-    res.header("Vary", "Origin"); // ayuda al cache por proxies
-    next();
-});
-
-app.use(
-    cors({
-        origin(origin, cb) {
-            // Permitir peticiones sin origen (como de Postman o Render Health Check)
-            if (!origin) return cb(null, true);
-            if (ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
-            return cb(new Error("Bloqueado por CORS: " + origin));
-        },
-        credentials: true,
-        methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-        allowedHeaders: ["Content-Type", "Authorization"],
-        exposedHeaders: ["set-cookie"],
-    })
-);
-
-// 🧩 3️⃣ Responder solicitudes preflight (OPTIONS)
+app.use((req, res, next) => { res.header("Vary", "Origin"); next(); });
+app.use(cors({
+    origin(origin, cb) {
+        if (!origin) return cb(null, true);
+        if (ALLOWED.includes(origin)) return cb(null, true);
+        return cb(new Error("CORS bloqueado: " + origin));
+    },
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+    exposedHeaders: ["set-cookie"],
+}));
 app.options("*", cors());
 
-// 🧩 4️⃣ Middleware base
+// === Middlewares base ===
 app.use(express.json());
 app.use(cookieParser());
 
-// 🧩 5️⃣ Rutas
-app.use("/auth", magicAuthRouter);
+// === Rutas ===
+app.use("/auth", authRouter);
 
-// 🧩 6️⃣ Endpoint de salud
+// Health
 app.get("/health", (_, res) => res.json({ ok: true }));
 
-// 🧩 7️⃣ Conexión a la base de datos y arranque del servidor
-const MONGO_URI =
-    process.env.MONGO_URI ||
-    "mongodb+srv://20230087:4sk1n9666@cluster0.51r6dvm.mongodb.net/usuario?retryWrites=true&w=majority&appName=Cluster0";
-
-mongoose
-    .connect(MONGO_URI)
+// === Mongo + arranque ===
+const uri = process.env.MONGO_URI;
+mongoose.connect(uri)
     .then(() => {
         const port = process.env.PORT || 8080;
-        app.listen(port, () => {
-            console.log(`✅ API corriendo en http://localhost:${port}`);
-        });
+        app.listen(port, () => console.log(`API http://localhost:${port}`));
     })
-    .catch((err) => {
-        console.error("❌ Error conectando a Mongo:", err);
+    .catch(err => {
+        console.error("Mongo error:", err);
         process.exit(1);
     });
