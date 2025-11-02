@@ -1,4 +1,4 @@
-// routes/magicAuth.js
+// src/routes/auth.routes.js
 import express from "express";
 import crypto from "crypto";
 import { v4 as uuidv4 } from "uuid";
@@ -14,8 +14,8 @@ import { sendMagicLinkEmail } from "../lib/email.js";
 
 const router = express.Router();
 
-const MAGIC_TTL_MS = 1000 * 60 * 15;             // 15 min
-const REFRESH_TTL_MS = 1000 * 60 * 60 * 24 * 30;   // 30 días
+const MAGIC_TTL_MS = 1000 * 60 * 15;        // 15 min
+const REFRESH_TTL_MS = 1000 * 60 * 60 * 24 * 30; // 30 días
 
 const refreshCookieOpts = () => ({
   httpOnly: true,
@@ -24,9 +24,7 @@ const refreshCookieOpts = () => ({
   maxAge: REFRESH_TTL_MS,
 });
 
-/* ===========================
- * REGISTER (usuario / password)
- * =========================== */
+/* ============ REGISTER (usuario / password) ============ */
 router.post("/register", async (req, res) => {
   try {
     const { nombre, apPaterno, apMaterno, telefono, correo, edad, password } = req.body;
@@ -57,9 +55,7 @@ router.post("/register", async (req, res) => {
   }
 });
 
-/* ===========================
- * LOGIN (usuario / password)
- * =========================== */
+/* ============ LOGIN (usuario / password) ============ */
 router.post("/login", async (req, res) => {
   try {
     const { correo, password } = req.body;
@@ -69,7 +65,6 @@ router.post("/login", async (req, res) => {
     if (!user) return res.status(401).json({ error: "Credenciales inválidas" });
 
     if (!user.passwordHash) {
-      // La cuenta pudo haberse creado por enlace mágico sin password
       return res.status(409).json({
         error: "Cuenta sin contraseña",
         detalle: "Esta cuenta fue creada con enlace mágico. Establece una contraseña antes de iniciar sesión por password.",
@@ -103,9 +98,7 @@ router.post("/login", async (req, res) => {
   }
 });
 
-/* ===========================
- * ENVIAR ENLACE MÁGICO
- * =========================== */
+/* ============ ENVIAR ENLACE MÁGICO ============ */
 router.post("/magic-link", async (req, res) => {
   try {
     const { correo } = req.body;
@@ -134,7 +127,7 @@ router.post("/magic-link", async (req, res) => {
       userAgent: req.headers["user-agent"] || "",
     });
 
-    const ORIGIN = process.env.APP_ORIGIN; // ej: http://localhost:5173
+    const ORIGIN = process.env.APP_ORIGIN; // p.ej. http://localhost:5173 o https://tu-front.com
     if (!ORIGIN) return res.status(500).json({ error: "Config APP_ORIGIN faltante" });
 
     const url = `${ORIGIN}/magic?token=${raw}&email=${encodeURIComponent(correo)}`;
@@ -148,9 +141,7 @@ router.post("/magic-link", async (req, res) => {
   }
 });
 
-/* ===========================
- * VERIFICAR ENLACE MÁGICO
- * =========================== */
+/* ============ VERIFICAR ENLACE MÁGICO ============ */
 router.post("/magic/verify", async (req, res) => {
   try {
     const { token, email, correo } = req.body;
@@ -198,9 +189,7 @@ router.post("/magic/verify", async (req, res) => {
   }
 });
 
-/* ===========================
- * REFRESH (rotación)
- * =========================== */
+/* ============ REFRESH (rotación) ============ */
 router.post("/refresh", async (req, res) => {
   try {
     const raw = req.cookies?.refresh_token || req.body?.refresh_token;
@@ -246,9 +235,7 @@ router.post("/refresh", async (req, res) => {
   }
 });
 
-/* ===========================
- * LOGOUT (revoca refresh actual)
- * =========================== */
+/* ============ LOGOUT (revoca refresh actual) ============ */
 router.post("/logout", async (req, res) => {
   try {
     const raw = req.cookies?.refresh_token || req.body?.refresh_token;
