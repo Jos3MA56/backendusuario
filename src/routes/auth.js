@@ -7,28 +7,28 @@ import User from "../models/User.js";
 import MagicLink from "../models/MagicLink.js";
 import RefreshToken from "../models/RefreshToken.js";
 
-import { auth } from "../middlewares/auth.js";
-
 import { signAccess, verifyAccess } from "../lib/jwt.js";
 import { hash, verifyHash } from "../lib/crypto.js";
 import { sendMagicLinkEmail } from "../lib/email.js";
 
 const router = Router();
 
-const MAGIC_TTL_MS = 1000 * 60 * 15;           // 15 min
-const REFRESH_TTL_MS = 1000 * 60 * 60 * 24 * 30; // 30 días
+const MAGIC_TTL_MS = 1000 * 60 * 15;                 // 15 min
+const REFRESH_TTL_MS = 1000 * 60 * 60 * 24 * 30;     // 30 días
 
+// Cookies cross-site para refresh token
 const refreshCookieOpts = () => ({
   httpOnly: true,
-  secure: process.env.NODE_ENV === "production",
+  secure: process.env.NODE_ENV === "production",               // https en prod
   sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
   maxAge: REFRESH_TTL_MS,
   path: "/",
 });
 
-const APP_ORIGIN = process.env.APP_ORIGIN || "https://frontendusuario.vercel.app/";
+// Origen del front SIN "/" final
+const APP_ORIGIN = (process.env.APP_ORIGIN || "https://frontendusuario.vercel.app").replace(/\/$/, "");
 
-// --- middleware access token ---
+// --- middleware access token (Bearer) ---
 function authenticateAccess(req, res, next) {
   try {
     const auth = req.headers.authorization || "";
@@ -96,7 +96,10 @@ router.post("/login", async (req, res) => {
 
     await RefreshToken.create({ userId: user._id, jti, tokenHash: refreshHash, expiresAt: exp, revokedAt: null });
 
-    return res.cookie("refresh_token", rawRefresh, refreshCookieOpts()).json({ accessToken });
+    // Setear cookie de refresh
+    res.cookie("refresh_token", rawRefresh, refreshCookieOpts());
+
+    return res.json({ accessToken });
   } catch (err) {
     console.error("login error:", err);
     res.status(500).json({ error: "Error en el servidor" });
@@ -170,7 +173,10 @@ router.post("/magic/verify", async (req, res) => {
 
     await RefreshToken.create({ userId: user._id, jti, tokenHash: refreshHash, expiresAt: exp, revokedAt: null });
 
-    return res.cookie("refresh_token", rawRefresh, refreshCookieOpts()).json({ accessToken });
+    // cookie de refresh
+    res.cookie("refresh_token", rawRefresh, refreshCookieOpts());
+
+    return res.json({ accessToken });
   } catch (err) {
     console.error("magic verify error:", err);
     res.status(500).json({ error: "Error en el servidor" });
@@ -210,7 +216,10 @@ router.post("/refresh", async (req, res) => {
 
     await RefreshToken.create({ userId: user._id, jti, tokenHash: newHash, expiresAt: exp, revokedAt: null });
 
-    return res.cookie("refresh_token", newRaw, refreshCookieOpts()).json({ accessToken });
+    // nueva cookie
+    res.cookie("refresh_token", newRaw, refreshCookieOpts());
+
+    return res.json({ accessToken });
   } catch (err) {
     console.error("refresh error:", err);
     res.status(500).json({ error: "Error en el servidor" });
@@ -230,25 +239,20 @@ router.post("/logout", async (req, res) => {
         }
       }
     }
-    res.clearCookie("refresh_token", { ...refreshCookieOpts(), maxAge: 0 }).json({ ok: true });
+    // borrar cookie
+    res.clearCookie("refresh_token", { ...refreshCookieOpts(), maxAge: 0 });
+    return res.json({ ok: true });
   } catch (err) {
     console.error("logout error:", err);
     res.status(500).json({ error: "Error en el servidor" });
   }
 });
 
-/* ============ ME (perfil por token) ============ */
+/* ============ ME (perfil por token de acceso) ============ */
 router.get("/me", authenticateAccess, async (req, res) => {
   const user = await User.findById(req.user.id).select("-passwordHash");
   if (!user) return res.status(404).json({ error: "Usuario no encontrado" });
   res.json(user);
-});
-
-router.get("/me", auth, async (req, res) => {
-  res.json({
-    mensaje: "Ruta protegida ✅",
-    user: req.user,
-  });
 });
 
 export default router;
