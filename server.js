@@ -1,59 +1,54 @@
-// server.js
-import "dotenv/config";
+// src/app.js (o donde crees el app)
 import express from "express";
-import mongoose from "mongoose";
+import cors from "cors";
 import cookieParser from "cookie-parser";
-import authRouter from "./src/routes/auth.js";
-import profileRouter from "./src/routes/profile.js";
 
 const app = express();
 
-// CORS a prueba de preflight
-app.set("trust proxy", 1);
+// 1) Define exactamente tus orígenes
+const ALLOWED_ORIGINS = [
+    "http://localhost:5173",
+    "https://frontendusuario.vercel.app",
+];
 
-app.use((req, res, next) => {
-    // Preflight: SIEMPRE responde con los headers correctos y 204
-    if (req.method === "OPTIONS") {
-        const acrh = req.headers["access-control-request-headers"] || "Content-Type, Authorization, Accept";
-        const origin = req.headers.origin || "*";   // para preflight no vas a mandar cookies, así que * es válido
-        res.set({
-            "Access-Control-Allow-Origin": origin,
-            "Access-Control-Allow-Methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
-            "Access-Control-Allow-Headers": acrh,
-            "Vary": "Origin"
-        });
-        return res.sendStatus(204);
-    }
-
-    // Requests normales: si necesitas cookies, aquí sí eco del origin + credentials
-    const origin = req.headers.origin;
-    if (origin) {
-        res.set("Access-Control-Allow-Origin", origin);
-        res.set("Access-Control-Allow-Credentials", "true");
-        res.set("Vary", "Origin");
-    }
-    next();
-});
-
+// 2) CORS paquete (para respuestas "normales")
+app.use(cors({
+    origin: (origin, cb) => {
+        // permitir también apps nativas / curl sin Origin
+        if (!origin) return cb(null, true);
+        if (ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
+        cb(new Error("Origen no permitido por CORS: " + origin));
+    },
+    credentials: true,
+}));
 
 app.use(express.json());
 app.use(cookieParser());
 
-app.use("/auth", authRouter);
-app.use("/profile", profileRouter);
-app.get("/health", (_, res) => res.json({ ok: true }));
+// 3) CORS manual para el preflight (OPTIONS) y asegurar headers en todas
+app.use((req, res, next) => {
+    const origin = req.headers.origin;
+    if (origin && ALLOWED_ORIGINS.includes(origin)) {
+        res.header("Access-Control-Allow-Origin", origin);
+        res.header("Vary", "Origin"); // importante para caches/CDN
+    }
+    res.header("Access-Control-Allow-Credentials", "true");
+    res.header("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
+    res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept");
 
-// Conexión Mongo una vez
-if (!mongoose.connection.readyState) {
-    mongoose
-        .connect(process.env.MONGO_URI)
-        .then(() => console.log("Mongo conectado"))
-        .catch((err) => {
-            console.error("Mongo error:", err);
-            if (process.env.VERCEL !== "1") process.exit(1);
-        });
-}
+    if (req.method === "OPTIONS") {
+        // El preflight DEBE regresar 204/200 sin pasar por auth ni otras rutas
+        return res.status(204).end();
+    }
+    next();
+});
 
-if (process.env.VERCEL !== "1") app.listen(process.env.PORT || 8080);
+// ... tus rutas:
+import authRouter from "./routes/auth.js";
+app.use("/api/auth", authRouter);
+
+// healthchecks
+app.get("/", (_, res) => res.send("API OK"));
+app.get("/healthz", (_, res) => res.send("healthy"));
 
 export default app;
