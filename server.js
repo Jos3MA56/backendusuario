@@ -10,28 +10,26 @@ import profileRouter from "./src/routes/profile.js";
 const app = express();
 
 // === CORS (ANTES de rutas) ===
+// === CORS duro (funciona aunque la ruta no exista) ===
+app.set("trust proxy", 1); // cookies SameSite=None + secure detrás de proxy
+
+const ALLOWED = new Set(["https://frontendusuario.vercel.app"]); // SIN "/" al final
+
 app.use((req, res, next) => {
+    const origin = req.headers.origin;
+    if (origin && ALLOWED.has(origin)) {
+        res.header("Access-Control-Allow-Origin", origin);
+        res.header("Access-Control-Allow-Credentials", "true");
+    }
+    res.header("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
+    res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
     res.header("Vary", "Origin");
+
+    // Responder preflight aquí mismo
+    if (req.method === "OPTIONS") return res.sendStatus(204);
     next();
 });
 
-const ALLOWED = ["https://frontendusuario.vercel.app"]; // sin "/" final
-
-const corsMw = cors({
-    origin(origin, cb) {
-        if (!origin) return cb(null, true); // permite Postman, curl, etc.
-        return ALLOWED.includes(origin) ? cb(null, true) : cb(new Error("CORS bloqueado: " + origin));
-    },
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-});
-
-app.use(corsMw);
-app.options("*", corsMw);
-
-// Necesario para cookies SameSite:'none' + secure
-app.set("trust proxy", 1);
 
 // === Middlewares base ===
 app.use(express.json());
