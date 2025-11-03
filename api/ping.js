@@ -1,3 +1,3 @@
 export default function handler(req, res) {
-    res.status(200).json({ ok: true, msg: "pong" });
+  return res.status(200).json({ ok: true, message: "pong desde vercel ✅" });
 }

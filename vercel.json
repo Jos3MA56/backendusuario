@@ -11,5 +11,12 @@
             "src": "/(.*)",
             "dest": "api/index.js"
         }
+<<<<<<< HEAD
+=======
+    ],
+    "rewrites": [
+        { "source": "/api/(.*)", "destination": "/api/[...path].js" }
+>>>>>>> 7268498b783d3b005537adbb2c2f079ffe176c95
     ]
+
 }
