@@ -19,5 +19,11 @@
                 "OPTIONS"
             ]
         }
+    ],
+    "rewrites": [
+        {
+            "source": "/(.*)",
+            "destination": "/src/index.js"
+        }
     ]
 }
