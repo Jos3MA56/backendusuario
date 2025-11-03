@@ -1,55 +1,11 @@
-// src/app.js
-import express from "express";
-import cors from "cors";
-import cookieParser from "cookie-parser";
-import app from "./src/app.js"
+import 'dotenv/config';
+import { createServer } from 'http';
+import app from './src/app.js';
+import './src/db.js'; // inicializa conexión
 
-const app = express();
+const PORT = process.env.PORT || 4000;
+const server = createServer(app);
 
-// ❌ ELIMINA ESTA LÍNEA (está duplicada)
-// const cors = require('cors');
-
-// 1) Define exactamente tus orígenes
-const ALLOWED_ORIGINS = [
-    "http://localhost:5173",
-    "https://frontendusuario.vercel.app",
-];
-
-const PORT = process.env.PORT || 5173;
-
-app.listen(PORT, () => {
-    console.log(`🚀 Servidor corriendo en puerto ${PORT}`);
+server.listen(PORT, () => {
+    console.log(`✅ Auth backend escuchando en http://localhost:${PORT}`);
 });
-// 2) Configuración de CORS simplificada y funcional
-app.use(cors({
-    origin: function (origin, callback) {
-        // Permitir requests sin origin (como Postman, mobile apps, etc.)
-        if (!origin) return callback(null, true);
-
-        if (ALLOWED_ORIGINS.includes(origin)) {
-            callback(null, true);
-        } else {
-            callback(new Error('Not allowed by CORS'));
-        }
-    },
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
-    exposedHeaders: ['Set-Cookie']
-}));
-
-app.use(express.json());
-app.use(cookieParser());
-
-// 3) Middleware adicional para manejar preflight OPTIONS
-app.options('*', cors()); // Habilita pre-flight para todas las rutas
-
-// ... tus rutas:
-import authRouter from "./routes/auth.js";
-app.use("/api/auth", authRouter);
-
-// healthchecks
-app.get("/", (_, res) => res.send("API OK"));
-app.get("/healthz", (_, res) => res.send("healthy"));
-
-export default app;

@@ -1,13 +1,17 @@
-// src/db.js
 import mongoose from 'mongoose';
 
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://20230087:4sk1n9666@cluster0.51r6dvm.mongodb.net/usuario?retryWrites=true&w=majority&appName=Cluster0';
+const uri = process.env.MONGO_URI;
+if (!uri) {
+    console.error('❌ Falta MONGO_URI en .env');
+    process.exit(1);
+}
 
-mongoose.connect(MONGODB_URI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-})
-    .then(() => console.log('✅ Conectado a MongoDB'))
-    .catch(err => console.error('❌ Error conectando a MongoDB:', err));
+mongoose.set('strictQuery', true);
 
-export default mongoose.connection;
+mongoose
+    .connect(uri, { autoIndex: true })
+    .then(() => console.log('✅ Conectado a MongoDB Atlas'))
+    .catch((err) => {
+        console.error('❌ Error MongoDB:', err?.message || err);
+        process.exit(1);
+    });
