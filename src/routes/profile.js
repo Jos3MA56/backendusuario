@@ -6,7 +6,9 @@ const router = express.Router();
 
 router.get("/", auth, async (req, res) => {
   const user = await User.findById(req.user.sub).select("_id nombre apPaterno apMaterno correo telefono edad createdAt");
-  res.json({ user });
+  res.json({
+    mensaje: "Acceso autorizado ✅",
+    user,
+  });
 });
-
 export default router;

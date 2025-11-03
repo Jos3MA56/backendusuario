@@ -26,7 +26,7 @@ const refreshCookieOpts = () => ({
   path: "/",
 });
 
-const APP_ORIGIN = process.env.APP_ORIGIN || "http://localhost:5173";
+const APP_ORIGIN = process.env.APP_ORIGIN || "https://frontendusuario.vercel.app/";
 
 // --- middleware access token ---
 function authenticateAccess(req, res, next) {
