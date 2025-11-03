@@ -2,6 +2,7 @@
 import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
+import app from "./src/app.js"
 
 const app = express();
 
@@ -14,6 +15,11 @@ const ALLOWED_ORIGINS = [
     "https://frontendusuario.vercel.app",
 ];
 
+const PORT = process.env.PORT || 5173;
+
+app.listen(PORT, () => {
+    console.log(`🚀 Servidor corriendo en puerto ${PORT}`);
+});
 // 2) Configuración de CORS simplificada y funcional
 app.use(cors({
     origin: function (origin, callback) {

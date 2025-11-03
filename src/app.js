@@ -7,29 +7,32 @@ import profileRoutes from "./routes/profile.js";
 
 const app = express();
 
-// ⚠️ IMPORTANTE: Este middleware DEBE ir PRIMERO, antes de todo
 const ALLOWED_ORIGINS = [
   "http://localhost:5173",
   "http://localhost:3000",
   "https://frontendusuario.vercel.app",
 ];
 
-// Middleware CORS manual (más confiable que el paquete 'cors' en Vercel)
+// ⚠️ CRÍTICO: Este middleware debe ir PRIMERO, antes de express.json()
 app.use((req, res, next) => {
   const origin = req.headers.origin;
 
-  // Permitir el origin si está en la lista
+  console.log('🔍 Request:', req.method, req.path);
+  console.log('🔍 Origin:', origin);
+
   if (origin && ALLOWED_ORIGINS.includes(origin)) {
     res.setHeader('Access-Control-Allow-Origin', origin);
   }
 
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,PATCH,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization,Accept');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization,Accept,Origin,X-Requested-With');
+  res.setHeader('Access-Control-Max-Age', '86400'); // 24 horas
 
-  // ⭐ CRÍTICO: Responder al preflight OPTIONS inmediatamente
+  // ⭐ IMPORTANTE: Responder a OPTIONS antes de las rutas
   if (req.method === 'OPTIONS') {
-    return res.status(200).end();
+    console.log('✅ Respondiendo a OPTIONS preflight');
+    return res.status(204).end(); // 204 No Content
   }
 
   next();
@@ -45,5 +48,11 @@ app.use("/profile", profileRoutes);
 // Health checks
 app.get("/", (_, res) => res.send("Backend OK"));
 app.get("/healthz", (_, res) => res.send("ok"));
+
+// Catch-all para rutas no encontradas
+app.use((req, res) => {
+  console.log('❌ Ruta no encontrada:', req.method, req.path);
+  res.status(404).json({ error: 'Ruta no encontrada' });
+});
 
 export default app;
