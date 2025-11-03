@@ -8,22 +8,21 @@ import profileRouter from "./src/routes/profile.js";
 
 const app = express();
 
-app.set("trust proxy", 1); // SameSite=None + secure detrás de proxy
-
-const ALLOWED = new Set(["https://frontendusuario.vercel.app"]); // ¡sin slash final!
-
+app.set("trust proxy", 1);
+const ALLOWED = new Set(["https://frontendusuario.vercel.app"]);
 app.use((req, res, next) => {
-    const origin = req.headers.origin;
-    if (origin && ALLOWED.has(origin)) {
-        res.header("Access-Control-Allow-Origin", origin);
+    const o = req.headers.origin;
+    if (o && ALLOWED.has(o)) {
+        res.header("Access-Control-Allow-Origin", o);
         res.header("Access-Control-Allow-Credentials", "true");
     }
     res.header("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
     res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept");
     res.header("Vary", "Origin");
-    if (req.method === "OPTIONS") return res.sendStatus(204); // responde preflight SIEMPRE
+    if (req.method === "OPTIONS") return res.sendStatus(204);
     next();
 });
+
 
 
 app.use(express.json());
@@ -44,10 +43,6 @@ if (!mongoose.connection.readyState) {
         });
 }
 
-// Solo arrancar puerto en local
-if (process.env.VERCEL !== "1") {
-    const port = process.env.PORT || 8080;
-    app.listen(port, () => console.log(`API local http://localhost:${port}`));
-}
+if (process.env.VERCEL !== "1") app.listen(process.env.PORT || 8080);
 
 export default app;
