@@ -1,6 +1,5 @@
 // src/app.js
 import express from "express";
-import cors from "cors";
 import cookieParser from "cookie-parser";
 
 import authRoutes from "./routes/auth.js";
@@ -8,40 +7,33 @@ import profileRoutes from "./routes/profile.js";
 
 const app = express();
 
-// Orígenes permitidos (hardcodeados como respaldo)
+// ⚠️ IMPORTANTE: Este middleware DEBE ir PRIMERO, antes de todo
 const ALLOWED_ORIGINS = [
   "http://localhost:5173",
   "http://localhost:3000",
   "https://frontendusuario.vercel.app",
 ];
 
-// Obtener orígenes desde env o usar los hardcodeados
-const origins = process.env.APP_ORIGIN
-  ? process.env.APP_ORIGIN.split(",").map(o => o.trim())
-  : ALLOWED_ORIGINS;
+// Middleware CORS manual (más confiable que el paquete 'cors' en Vercel)
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
 
-console.log('🔐 Orígenes permitidos:', origins);
+  // Permitir el origin si está en la lista
+  if (origin && ALLOWED_ORIGINS.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  }
 
-app.use(cors({
-  origin: function (origin, callback) {
-    // Permitir requests sin origin (Postman, curl, apps móviles)
-    if (!origin) return callback(null, true);
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,PATCH,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization,Accept');
 
-    if (origins.includes(origin)) {
-      console.log('✅ Origin permitido:', origin);
-      callback(null, true);
-    } else {
-      console.log('❌ Origin bloqueado:', origin);
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
-}));
+  // ⭐ CRÍTICO: Responder al preflight OPTIONS inmediatamente
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
 
-// Manejar preflight OPTIONS
-app.options('*', cors());
+  next();
+});
 
 app.use(express.json());
 app.use(cookieParser());
@@ -50,7 +42,7 @@ app.use(cookieParser());
 app.use("/auth", authRoutes);
 app.use("/profile", profileRoutes);
 
-// Health
+// Health checks
 app.get("/", (_, res) => res.send("Backend OK"));
 app.get("/healthz", (_, res) => res.send("ok"));
 
