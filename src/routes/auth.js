@@ -19,7 +19,7 @@ const REFRESH_TTL_MS = 1000 * 60 * 60 * 24 * 30;     // 30 días
 // Cookies cross-site para refresh token
 const refreshCookieOpts = () => ({
   httpOnly: true,
-  secure: process.env.NODE_ENV === "production",               // https en prod
+  secure: process.env.NODE_ENV === "production",
   sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
   maxAge: REFRESH_TTL_MS,
   path: "/",
@@ -43,32 +43,119 @@ function authenticateAccess(req, res, next) {
 }
 
 /* ============ REGISTER ============ */
-// Ejemplo de lo que debería esperar tu backend
 router.post('/register', async (req, res) => {
   try {
+    console.log('📝 POST /register - Body recibido:', req.body);
+    console.log('📝 Headers:', req.headers);
+
     const { nombre, apellido, email, telefono, edad, password } = req.body;
 
     // Validaciones
     if (!nombre || !apellido || !email || !password) {
+      console.log('❌ Faltan campos obligatorios');
       return res.status(400).json({
-        error: 'Faltan campos obligatorios'
+        error: 'Faltan campos obligatorios',
+        received: { nombre, apellido, email, telefono, edad }
       });
     }
 
-    // Tu lógica de registro aquí...
+    // Validar formato de email
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      console.log('❌ Email inválido:', email);
+      return res.status(400).json({ error: 'Email inválido' });
+    }
+
+    // Validar longitud de contraseña
+    if (password.length < 8) {
+      console.log('❌ Contraseña muy corta');
+      return res.status(400).json({ error: 'La contraseña debe tener al menos 8 caracteres' });
+    }
+
+    // Verificar si el usuario ya existe
+    const existingUser = await User.findOne({ correo: email.toLowerCase() });
+    if (existingUser) {
+      console.log('❌ Usuario ya existe:', email);
+      return res.status(409).json({ error: 'El correo ya está registrado' });
+    }
+
+    // Hash de la contraseña
+    console.log('🔒 Hasheando contraseña...');
+    const passwordHash = await bcrypt.hash(password, 10);
+
+    // Crear el usuario
+    console.log('💾 Creando usuario en BD...');
+    const newUser = await User.create({
+      nombre: nombre.trim(),
+      apellido: apellido.trim(),
+      correo: email.toLowerCase().trim(),
+      telefono: telefono || '',
+      edad: edad || null,
+      passwordHash,
+      isActive: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    console.log('✅ Usuario creado exitosamente:', newUser._id);
+
+    // Generar tokens
+    const accessToken = signAccess({
+      sub: newUser._id.toString(),
+      email: newUser.correo
+    });
+
+    // Crear refresh token
+    const jti = uuidv4();
+    const rawRefresh = `${uuidv4()}.${uuidv4()}`;
+    const refreshHash = await hash(rawRefresh);
+    const exp = new Date(Date.now() + REFRESH_TTL_MS);
+
+    await RefreshToken.create({
+      userId: newUser._id,
+      jti,
+      tokenHash: refreshHash,
+      expiresAt: exp,
+      revokedAt: null
+    });
+
+    console.log('🔑 Tokens generados');
+
+    // Setear cookie de refresh
+    res.cookie("refresh_token", rawRefresh, refreshCookieOpts());
+
+    // Responder con los datos del usuario (sin el hash de contraseña)
+    return res.status(201).json({
+      message: 'Usuario registrado exitosamente',
+      accessToken,
+      user: {
+        id: newUser._id,
+        nombre: newUser.nombre,
+        apellido: newUser.apellido,
+        email: newUser.correo,
+        telefono: newUser.telefono,
+        edad: newUser.edad,
+      }
+    });
 
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('❌ Error en /register:', error);
+    console.error('Stack:', error.stack);
+    res.status(500).json({
+      error: 'Error al registrar usuario',
+      message: error.message
+    });
   }
 });
 
 /* ============ LOGIN (password) ============ */
 router.post("/login", async (req, res) => {
   try {
+    console.log('📝 POST /login');
     const { correo, password } = req.body;
     if (!correo || !password) return res.status(400).json({ error: "Faltan datos" });
 
-    const user = await User.findOne({ correo, isActive: true });
+    const user = await User.findOne({ correo: correo.toLowerCase(), isActive: true });
     if (!user) return res.status(401).json({ error: "Credenciales inválidas" });
 
     if (!user.passwordHash) {
@@ -91,6 +178,7 @@ router.post("/login", async (req, res) => {
     // Setear cookie de refresh
     res.cookie("refresh_token", rawRefresh, refreshCookieOpts());
 
+    console.log('✅ Login exitoso:', user.correo);
     return res.json({ accessToken });
   } catch (err) {
     console.error("login error:", err);
@@ -104,8 +192,15 @@ router.post("/magic-link", async (req, res) => {
     const { correo } = req.body;
     if (!correo) return res.status(400).json({ error: "Falta correo" });
 
-    let user = await User.findOne({ correo });
-    if (!user) user = await User.create({ correo, nombre: correo.split("@")[0], isActive: true });
+    let user = await User.findOne({ correo: correo.toLowerCase() });
+    if (!user) {
+      user = await User.create({
+        correo: correo.toLowerCase(),
+        nombre: correo.split("@")[0],
+        apellido: '',
+        isActive: true
+      });
+    }
     if (user.isActive === false) return res.json({ ok: true });
 
     const raw = uuidv4().replace(/-/g, "") + uuidv4().replace(/-/g, "");
@@ -138,7 +233,7 @@ router.post("/magic/verify", async (req, res) => {
     const mail = correo || email;
     if (!mail || !token) return res.status(400).json({ error: "Faltan datos" });
 
-    const user = await User.findOne({ correo: mail, isActive: true });
+    const user = await User.findOne({ correo: mail.toLowerCase(), isActive: true });
     if (!user) return res.status(401).json({ error: "No autorizado" });
 
     const links = await MagicLink.find({
@@ -242,9 +337,14 @@ router.post("/logout", async (req, res) => {
 
 /* ============ ME (perfil por token de acceso) ============ */
 router.get("/me", authenticateAccess, async (req, res) => {
-  const user = await User.findById(req.user.id).select("-passwordHash");
-  if (!user) return res.status(404).json({ error: "Usuario no encontrado" });
-  res.json(user);
+  try {
+    const user = await User.findById(req.user.id).select("-passwordHash");
+    if (!user) return res.status(404).json({ error: "Usuario no encontrado" });
+    res.json(user);
+  } catch (err) {
+    console.error("me error:", err);
+    res.status(500).json({ error: "Error en el servidor" });
+  }
 });
 
 export default router;

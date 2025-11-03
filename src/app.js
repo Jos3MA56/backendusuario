@@ -16,8 +16,15 @@ const ALLOWED_ORIGINS = [
 app.use((req, res, next) => {
   const origin = req.headers.origin;
 
+  console.log(`📨 ${req.method} ${req.path} | Origin: ${origin}`);
+
   if (origin && ALLOWED_ORIGINS.includes(origin)) {
     res.setHeader('Access-Control-Allow-Origin', origin);
+    console.log('✅ Origin permitido');
+  } else if (!origin) {
+    console.log('⚠️ Sin origin header');
+  } else {
+    console.log('❌ Origin no permitido:', origin);
   }
 
   res.setHeader('Access-Control-Allow-Credentials', 'true');
@@ -25,6 +32,7 @@ app.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
 
   if (req.method === 'OPTIONS') {
+    console.log('✅ Respondiendo a OPTIONS preflight');
     return res.status(204).end();
   }
 
@@ -39,7 +47,13 @@ app.use(cookieParser());
 app.use("/auth", authRoutes);
 app.use("/profile", profileRoutes);
 
-app.get("/", (req, res) => res.json({ status: "OK" }));
+app.get("/", (req, res) => res.json({ status: "OK", timestamp: new Date().toISOString() }));
 app.get("/healthz", (req, res) => res.send("healthy"));
+
+// 404 handler
+app.use((req, res) => {
+  console.log(`❌ 404: ${req.method} ${req.path}`);
+  res.status(404).json({ error: 'Ruta no encontrada', path: req.path });
+});
 
 export default app;
