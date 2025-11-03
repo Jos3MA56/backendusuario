@@ -1,4 +1,5 @@
 // api/index.js
-import serverless from "serverless-http";
-import app from "../src/app.js";
-export default serverless(app);
+import app from './../../src/app.js';
+
+// Para Vercel Serverless
+export default app;
