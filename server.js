@@ -8,21 +8,32 @@ import profileRouter from "./src/routes/profile.js";
 
 const app = express();
 
+// CORS a prueba de preflight
 app.set("trust proxy", 1);
-const ALLOWED = new Set(["https://frontendusuario.vercel.app"]);
+
 app.use((req, res, next) => {
-    const o = req.headers.origin;
-    if (o && ALLOWED.has(o)) {
-        res.header("Access-Control-Allow-Origin", o);
-        res.header("Access-Control-Allow-Credentials", "true");
+    // Preflight: SIEMPRE responde con los headers correctos y 204
+    if (req.method === "OPTIONS") {
+        const acrh = req.headers["access-control-request-headers"] || "Content-Type, Authorization, Accept";
+        const origin = req.headers.origin || "*";   // para preflight no vas a mandar cookies, así que * es válido
+        res.set({
+            "Access-Control-Allow-Origin": origin,
+            "Access-Control-Allow-Methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
+            "Access-Control-Allow-Headers": acrh,
+            "Vary": "Origin"
+        });
+        return res.sendStatus(204);
     }
-    res.header("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
-    res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept");
-    res.header("Vary", "Origin");
-    if (req.method === "OPTIONS") return res.sendStatus(204);
+
+    // Requests normales: si necesitas cookies, aquí sí eco del origin + credentials
+    const origin = req.headers.origin;
+    if (origin) {
+        res.set("Access-Control-Allow-Origin", origin);
+        res.set("Access-Control-Allow-Credentials", "true");
+        res.set("Vary", "Origin");
+    }
     next();
 });
-
 
 
 app.use(express.json());
