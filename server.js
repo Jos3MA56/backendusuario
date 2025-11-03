@@ -2,6 +2,7 @@
 import "dotenv/config";
 import mongoose from "mongoose";
 import app from "./src/app.js";
+import cors from "cors";
 
 const PORT = process.env.PORT || 8080;
 const MONGO_URI = process.env.MONGO_URI;
@@ -11,3 +12,8 @@ mongoose.connect(MONGO_URI).then(() => {
         console.log(`API local en http://localhost:${PORT}`);
     });
 });
+
+app.use(cors({
+    origin: ["http://localhost:5173", "https://frontendusuario.vercel.app"],
+    credentials: true,
+}));
