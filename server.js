@@ -1,9 +1,12 @@
-// src/app.js (o donde crees el app)
+// src/app.js
 import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 
 const app = express();
+
+// ❌ ELIMINA ESTA LÍNEA (está duplicada)
+// const cors = require('cors');
 
 // 1) Define exactamente tus orígenes
 const ALLOWED_ORIGINS = [
@@ -11,37 +14,29 @@ const ALLOWED_ORIGINS = [
     "https://frontendusuario.vercel.app",
 ];
 
-// 2) CORS paquete (para respuestas "normales")
+// 2) Configuración de CORS simplificada y funcional
 app.use(cors({
-    origin: (origin, cb) => {
-        // permitir también apps nativas / curl sin Origin
-        if (!origin) return cb(null, true);
-        if (ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
-        cb(new Error("Origen no permitido por CORS: " + origin));
+    origin: function (origin, callback) {
+        // Permitir requests sin origin (como Postman, mobile apps, etc.)
+        if (!origin) return callback(null, true);
+
+        if (ALLOWED_ORIGINS.includes(origin)) {
+            callback(null, true);
+        } else {
+            callback(new Error('Not allowed by CORS'));
+        }
     },
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
+    exposedHeaders: ['Set-Cookie']
 }));
 
 app.use(express.json());
 app.use(cookieParser());
 
-// 3) CORS manual para el preflight (OPTIONS) y asegurar headers en todas
-app.use((req, res, next) => {
-    const origin = req.headers.origin;
-    if (origin && ALLOWED_ORIGINS.includes(origin)) {
-        res.header("Access-Control-Allow-Origin", origin);
-        res.header("Vary", "Origin"); // importante para caches/CDN
-    }
-    res.header("Access-Control-Allow-Credentials", "true");
-    res.header("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
-    res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept");
-
-    if (req.method === "OPTIONS") {
-        // El preflight DEBE regresar 204/200 sin pasar por auth ni otras rutas
-        return res.status(204).end();
-    }
-    next();
-});
+// 3) Middleware adicional para manejar preflight OPTIONS
+app.options('*', cors()); // Habilita pre-flight para todas las rutas
 
 // ... tus rutas:
 import authRouter from "./routes/auth.js";
