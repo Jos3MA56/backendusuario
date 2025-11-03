@@ -1,11 +1,5 @@
 {
-  "name": "auth-backend",
-  "version": "1.0.0",
   "type": "module",
-  "scripts": {
-    "dev": "node server.js",
-    "start": "node api/index.js"
-  },
   "dependencies": {
     "bcryptjs": "^2.4.3",
     "cookie-parser": "^1.4.6",
