@@ -43,30 +43,22 @@ function authenticateAccess(req, res, next) {
 }
 
 /* ============ REGISTER ============ */
-router.post("/register", async (req, res) => {
+// Ejemplo de lo que debería esperar tu backend
+router.post('/register', async (req, res) => {
   try {
-    const { nombre, apPaterno, apMaterno, telefono, correo, edad, password } = req.body;
-    if (!nombre || !correo || !password) return res.status(400).json({ error: "Faltan datos requeridos" });
+    const { nombre, apellido, email, telefono, edad, password } = req.body;
 
-    const exists = await User.findOne({ correo });
-    if (exists) return res.status(409).json({ error: "El correo ya está registrado" });
+    // Validaciones
+    if (!nombre || !apellido || !email || !password) {
+      return res.status(400).json({
+        error: 'Faltan campos obligatorios'
+      });
+    }
 
-    const passwordHash = await bcrypt.hash(password, 10);
-    const user = await User.create({
-      nombre,
-      apPaterno: apPaterno || "",
-      apMaterno: apMaterno || "",
-      telefono: telefono || "",
-      correo,
-      edad: edad || null,
-      passwordHash,
-      isActive: true,
-    });
+    // Tu lógica de registro aquí...
 
-    res.status(201).json({ ok: true, userId: user._id });
-  } catch (err) {
-    console.error("register error:", err);
-    res.status(500).json({ error: "Error en el servidor" });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
 });
 
