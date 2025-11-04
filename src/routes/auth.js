@@ -20,7 +20,7 @@ function minutesFromNow(mins) {
 router.post("/register", async (req, res) => {
   try {
     // ✅ Recibe "password" desde el frontend
-    const { correo, password, nombre, apPaterno, apMaterno, telefono, edad, isActive } = req.body;
+    const { correo, nombre, apPaterno, apMaterno, telefono, edad, password, isActive } = req.body;
 
     if (!correo || !password) {
       return res.status(400).json({ error: "Faltan datos" });
