@@ -1,240 +1,256 @@
-import express from 'express';
-import bcrypt from 'bcryptjs';
-import crypto from 'crypto';
-import jwt from 'jsonwebtoken';
-import User from '../models/User.js';
-import MagicLink from '../models/MagicLink.js';
-import { signAccess } from '../lib/jwt.js';
+import express from "express";
+import crypto from "crypto";
+import { v4 as uuidv4 } from "uuid";
+import bcrypt from "bcryptjs";
 
-import { sendMagicLinkEmail } from "../email/sendMail.js";
+import User from "../models/User.js";
+import RefreshToken from "../models/RefreshToken.js";
+import MagicLink from "../models/MagicLink.js";
+import { signAccess } from "../lib/jwt.js";
+import { hash, verifyHash } from "../lib/crypto.js";
+import { sendMagicLinkEmail } from '../lib/email.js';
 
 const router = express.Router();
 
-function minutesFromNow(mins) {
-  const d = new Date();
-  d.setMinutes(d.getMinutes() + mins);
-  return d;
-}
-
-// === Registro ===
 router.post("/register", async (req, res) => {
   try {
-    // ✅ Log para debug - VER QUÉ LLEGA
-    console.log("📦 Body recibido:", req.body);
+    const { nombre, apPaterno, apMaterno, telefono, correo, edad, password } = req.body;
 
-    // ✅ Recibe "password" desde el frontend
-    let { correo, password, nombre, apPaterno, apMaterno, telefono, edad, isActive } = req.body;
-
-    // ✅ Validación ANTES de normalizar
-    if (!correo || !password) {
-      const missing = [];
-      if (!correo) missing.push('correo');
-      if (!password) missing.push('password');
-      return res.status(400).json({
-        error: "Faltan datos requeridos",
-        campos_faltantes: missing,
-        recibido: { correo, password: password ? '***' : undefined }
-      });
-    }
-
-    // ✅ Normalizar el correo DESPUÉS de validar
-    correo = correo.toLowerCase().trim();
+    if (!nombre || !apPaterno || !correo || !password)
+      return res.status(400).json({ error: "Faltan datos requeridos" });
 
     const exists = await User.findOne({ correo });
-    if (exists) return res.status(409).json({ error: "El usuario ya existe" });
+    if (exists) return res.status(409).json({ error: "El correo ya está registrado" });
 
-    // ✅ Hasheas la contraseña aquí
     const passwordHash = await bcrypt.hash(password, 10);
 
     const user = await User.create({
-      correo,
-      passwordHash, // ✅ Guardas el hash
-      nombre,
-      apPaterno,
-      apMaterno,
-      telefono,
-      edad,
-      isActive
+      nombre, apPaterno, apMaterno, telefono, correo, edad, passwordHash
     });
 
-    res.status(201).json({ ok: true, user: { id: user._id, correo: user.correo } });
-  } catch (e) {
-    res.status(500).json({ error: "No se pudo registrar", detail: e.message });
+    return res.status(201).json({ ok: true, userId: user._id });
+  } catch (err) {
+    console.error("register error:", err);
+    return res.status(500).json({ error: "Error en el servidor" });
   }
 });
 
-
-// === Login (JWT) ===
-router.post('/login', async (req, res) => {
+router.post("/login", async (req, res) => {
   try {
-    console.log('🔐 Intento de login:', { correo: req.body?.correo, hasPassword: !!req.body?.password });
+    const { correo, password } = req.body;
+    const user = await User.findOne({ correo, isActive: true });
+    if (!user || !user.passwordHash) return res.status(401).json({ error: "Credenciales inválidas" });
 
-    // ✅ Recibe "password" (contraseña en texto plano) desde el frontend
-    let { correo, password } = req.body || {};
-
-    // ✅ Normalizar el correo (lowercase y trim)
-    if (correo) {
-      correo = correo.toLowerCase().trim();
-    }
-
-    if (!correo || !password) {
-      console.log('❌ Faltan credenciales:', { correo: !!correo, password: !!password });
-      return res.status(400).json({ error: 'Faltan credenciales' });
-    }
-
-    const user = await User.findOne({ correo });
-    console.log('👤 Usuario encontrado:', { exists: !!user, hasHash: !!user?.passwordHash });
-
-    if (!user || !user.passwordHash) {
-      console.log('❌ Usuario no existe o no tiene passwordHash');
-      return res.status(401).json({ error: 'Credenciales inválidas' });
-    }
-
-    // ✅ Comparas la contraseña recibida con el hash guardado
     const ok = await bcrypt.compare(password, user.passwordHash);
-    console.log('🔑 Comparación de password:', ok ? '✅ CORRECTA' : '❌ INCORRECTA');
+    if (!ok) return res.status(401).json({ error: "Credenciales inválidas" });
 
-    if (!ok) {
-      return res.status(401).json({ error: 'Credenciales inválidas' });
-    }
+    const accessToken = signAccess({ sub: user._id.toString(), email: user.correo });
 
-    const token = signAccess({ sub: user.id, correo: user.correo });
-    return res.json({
-      ok: true,
-      token,
-      user: { id: user.id, correo: user.correo, nombre: user.nombre }
+    const jti = uuidv4();
+    const rawRefresh = uuidv4() + "." + uuidv4();
+    const refreshHash = await hash(rawRefresh);
+    const exp = new Date(Date.now() + 1000 * 60 * 60 * 24 * 30);
+
+    await RefreshToken.create({
+      userId: user._id, jti, tokenHash: refreshHash, expiresAt: exp
     });
-  } catch (e) {
-    return res.status(500).json({ error: 'No se pudo iniciar sesión', detail: e?.message });
+
+    res
+      .cookie("refresh_token", rawRefresh, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
+        maxAge: 1000 * 60 * 60 * 24 * 30
+      })
+      .json({ accessToken });
+  } catch (err) {
+    console.error("login error:", err);
+    return res.status(500).json({ error: "Error en el servidor" });
+  }
+});
+
+router.post("/refresh", async (req, res) => {
+  try {
+    const raw = req.cookies?.refresh_token || req.body?.refresh_token;
+    if (!raw) return res.status(401).json({ error: "Falta refresh token" });
+
+    const candidates = await RefreshToken.find({
+      revokedAt: null,
+      expiresAt: { $gt: new Date() }
+    }).sort({ createdAt: -1 }).limit(500);
+
+    let row = null;
+    for (const r of candidates) {
+      if (await verifyHash(raw, r.tokenHash)) { row = r; break; }
+    }
+    if (!row) return res.status(401).json({ error: "Refresh inválido" });
+
+    await RefreshToken.updateOne({ _id: row._id }, { $set: { revokedAt: new Date() } });
+
+    const user = await User.findById(row.userId);
+    if (!user) return res.status(401).json({ error: "Usuario no encontrado" });
+
+    const accessToken = signAccess({ sub: user._id.toString(), email: user.correo });
+
+    const jti = uuidv4();
+    const newRaw = uuidv4() + "." + uuidv4();
+    const newHash = await hash(newRaw);
+    const exp = new Date(Date.now() + 1000 * 60 * 60 * 24 * 30);
+
+    await RefreshToken.create({
+      userId: user._id, jti, tokenHash: newHash, expiresAt: exp
+    });
+
+    res
+      .cookie("refresh_token", newRaw, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
+        maxAge: 1000 * 60 * 60 * 24 * 30
+      })
+      .json({ accessToken });
+  } catch (err) {
+    console.error("refresh error:", err);
+    return res.status(500).json({ error: "Error en el servidor" });
+  }
+});
+
+router.post("/logout", async (req, res) => {
+  try {
+    const raw = req.cookies?.refresh_token || req.body?.refresh_token;
+    if (raw) {
+      const candidates = await RefreshToken.find({ revokedAt: null });
+      for (const r of candidates) {
+        if (await verifyHash(raw, r.tokenHash)) {
+          await RefreshToken.updateOne({ _id: r._id }, { $set: { revokedAt: new Date() } });
+          break;
+        }
+      }
+    }
+    res.clearCookie("refresh_token").json({ ok: true });
+  } catch (err) {
+    console.error("logout error:", err);
+    return res.status(500).json({ error: "Error en el servidor" });
   }
 });
 
 router.post("/magic-link", async (req, res) => {
-  const { correo } = req.body;
-  if (!correo) return res.status(400).json({ error: "Falta correo" });
+  console.log("🔍 Inicio magic-link");
+  console.log("📧 RESEND_API_KEY configurado:", process.env.RESEND_API_KEY ? "SÍ" : "NO");
 
   try {
-    const token = crypto.randomBytes(32).toString("hex");
-    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
-    const link = `${process.env.APP_ORIGIN}/magic-callback?token=${token}`;
+    const { correo } = req.body;
+    console.log("📬 Correo recibido:", correo);
 
-    // Busca o crea el usuario
+    if (!correo) return res.status(400).json({ error: "Falta correo" });
+
+    // Buscar o crear usuario automáticamente
     let user = await User.findOne({ correo });
+
     if (!user) {
-      user = await User.create({ correo, passwordHash: null });
+      console.log("⚠️ Usuario no existe, creando automáticamente...");
+      user = await User.create({
+        correo,
+        nombre: correo.split('@')[0],
+        isActive: true
+      });
+      console.log("✅ Usuario creado:", user._id);
+    } else if (user.isActive === false) {
+      console.warn("⚠️ Usuario inactivo:", correo);
+      return res.json({ ok: true });
     }
 
+    console.log("✅ Usuario:", user._id);
+
+    const raw = crypto.randomBytes(32).toString("hex");
+    const tokenHash = await hash(raw);
+    const expires = new Date(Date.now() + 1000 * 60 * 15);
+
     await MagicLink.create({
+      userId: user._id,
       tokenHash,
-      user: user._id,
-      expiresAt: minutesFromNow(15)
+      expiresAt: expires,
+      ip: req.ip,
+      userAgent: req.headers["user-agent"] || ""
     });
 
-    const sent = await sendMagicLinkEmail(correo, link);
+    console.log("✅ MagicLink creado en BD");
 
-    return res.json({ ok: true, sent, link: sent ? undefined : link });
-  } catch (error) {
-    console.error("Error generando enlace mágico:", error);
-    res.status(500).json({ error: "No se pudo generar el enlace" });
+    const ORIGIN = process.env.APP_ORIGIN;
+    if (!ORIGIN) {
+      console.error("❌ Falta APP_ORIGIN");
+      return res.status(500).json({ error: "Config APP_ORIGIN faltante" });
+    }
+
+    const url = `${ORIGIN}/magic?token=${raw}&email=${encodeURIComponent(correo)}`;
+    console.log("🔗 URL generada:", url);
+    console.log("📤 Intentando enviar email con Resend...");
+
+    try {
+      const result = await sendMagicLinkEmail(correo, url);
+      console.log("✅ Email enviado exitosamente:", result.id);
+      return res.json({ ok: true });
+    } catch (emailError) {
+      console.error("❌ ERROR EMAIL:", emailError.message);
+      return res.status(500).json({
+        error: "Error al enviar correo",
+        message: emailError.message
+      });
+    }
+  } catch (err) {
+    console.error("❌ ERROR GENERAL:", err);
+    return res.status(500).json({
+      error: "Error en el servidor",
+      message: err.message
+    });
   }
 });
 
-// === Verificar enlace mágico ===
-router.post('/magic-verify', async (req, res) => {
+router.post("/magic/verify", async (req, res) => {
   try {
-    const { token } = req.body || {};
-    if (!token) return res.status(400).json({ error: 'Falta token' });
+    const { email, token, correo } = req.body;
+    const mail = correo || email;
+    if (!mail || !token) return res.status(400).json({ error: "Faltan datos" });
 
-    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
-    const ml = await MagicLink.findOne({ tokenHash }).populate('user');
+    const user = await User.findOne({ correo: mail, isActive: true });
+    if (!user) return res.status(401).json({ error: "No autorizado" });
 
-    if (!ml || ml.used) {
-      return res.status(401).json({ error: 'Token inválido' });
+    const links = await MagicLink.find({
+      userId: user._id,
+      usedAt: null,
+      expiresAt: { $gt: new Date() }
+    }).sort({ createdAt: -1 }).limit(20);
+
+    let row = null;
+    for (const r of links) {
+      if (await verifyHash(token, r.tokenHash)) { row = r; break; }
     }
+    if (!row) return res.status(401).json({ error: "Token inválido o expirado" });
 
-    if (ml.expiresAt < new Date()) {
-      return res.status(401).json({ error: 'Token expirado' });
-    }
+    await MagicLink.updateOne({ _id: row._id }, { $set: { usedAt: new Date() } });
 
-    ml.used = true;
-    await ml.save();
+    const accessToken = signAccess({ sub: user._id.toString(), email: user.correo });
 
-    const user = ml.user;
-    const jwtToken = signAccess({ sub: user.id, correo: user.correo });
+    const jti = uuidv4();
+    const rawRefresh = uuidv4() + "." + uuidv4();
+    const refreshHash = await hash(rawRefresh);
+    const exp = new Date(Date.now() + 1000 * 60 * 60 * 24 * 30);
 
-    return res.json({
-      ok: true,
-      token: jwtToken,
-      user: { id: user.id, correo: user.correo }
+    await RefreshToken.create({
+      userId: user._id, jti, tokenHash: refreshHash, expiresAt: exp
     });
-  } catch (e) {
-    return res.status(500).json({ error: 'No se pudo verificar el enlace', detail: e?.message });
+
+    res.cookie("refresh_token", rawRefresh, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
+      maxAge: 1000 * 60 * 60 * 24 * 30
+    }).json({ accessToken });
+
+  } catch (err) {
+    console.error("magic verify error:", err);
+    return res.status(500).json({ error: "Error en el servidor" });
   }
 });
 
 export default router;
-
-// ============================================
-// 🔍 RUTAS DE DEBUG - ELIMINAR EN PRODUCCIÓN
-// ============================================
-
-// Ver todos los usuarios (lista básica)
-router.get('/debug/users', async (req, res) => {
-  try {
-    const users = await User.find({}).select('correo nombre createdAt passwordHash').limit(10);
-    res.json({
-      total: users.length,
-      users: users.map(u => ({
-        id: u._id,
-        correo: u.correo,
-        nombre: u.nombre,
-        hasPasswordHash: !!u.passwordHash,
-        passwordHashLength: u.passwordHash?.length,
-        createdAt: u.createdAt
-      }))
-    });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-// Buscar un usuario específico
-router.post('/debug/find-user', async (req, res) => {
-  try {
-    const { correo } = req.body;
-    console.log('🔍 Buscando usuario:', correo);
-
-    const user = await User.findOne({ correo });
-    console.log('📊 Resultado:', user ? 'ENCONTRADO' : 'NO ENCONTRADO');
-
-    if (user) {
-      res.json({
-        found: true,
-        user: {
-          id: user._id,
-          correo: user.correo,
-          correoLength: user.correo?.length,
-          correoBytes: Buffer.from(user.correo || '').toString('hex'),
-          nombre: user.nombre,
-          hasPasswordHash: !!user.passwordHash,
-          passwordHashLength: user.passwordHash?.length,
-          passwordHashStart: user.passwordHash?.substring(0, 10)
-        }
-      });
-    } else {
-      // Buscar usuarios similares
-      const similar = await User.find({
-        correo: { $regex: correo.split('@')[0], $options: 'i' }
-      }).limit(5);
-
-      res.json({
-        found: false,
-        searched: correo,
-        totalUsers: await User.countDocuments({}),
-        similarUsers: similar.map(u => u.correo)
-      });
-    }
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});

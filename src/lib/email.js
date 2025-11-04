@@ -1,50 +1,88 @@
-// src/lib/email.js
-import nodemailer from "nodemailer";
+import nodemailer from 'nodemailer';
 
-/**
- * Usa SMTP (Gmail u otro proveedor).
- * Variables .env esperadas:
- *  - SMTP_HOST (ej: smtp.gmail.com)
- *  - SMTP_PORT (465 SSL o 587 STARTTLS)
- *  - SMTP_USER
- *  - SMTP_PASS  (en Gmail, "contraseña de aplicación")
- *  - MAIL_FROM  (opcional; por defecto SMTP_USER)
- */
-
+// Configurar el transportador con tus variables de entorno
 const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST || "smtp.gmail.com",
-  port: Number(process.env.SMTP_PORT || 465),
-  secure: Number(process.env.SMTP_PORT || 465) === 465, // true si 465
+  host: process.env.SMTP_HOST,
+  port: process.env.SMTP_PORT,
+  secure: process.env.SMTP_PORT === '465', // true para 465, false para otros puertos
   auth: {
     user: process.env.SMTP_USER,
     pass: process.env.SMTP_PASS,
   },
   tls: {
-    minVersion: "TLSv1.2",
-  },
+    rejectUnauthorized: false // Para desarrollo
+  }
 });
 
-export async function sendMagicLinkEmail(to, url) {
-  const from = process.env.MAIL_FROM || process.env.SMTP_USER;
-  const html = `
-    <div style="font-family:system-ui,Segoe UI,Arial,sans-serif;max-width:520px;margin:auto">
-      <h2>Tu enlace mágico 🔐</h2>
-      <p>Haz clic para iniciar sesión. Este enlace expira en <b>15 minutos</b>.</p>
-      <p style="margin:24px 0">
-        <a href="${url}" 
-           style="background:#7c3aed;color:#fff;text-decoration:none;padding:12px 18px;border-radius:8px;display:inline-block">
-          Iniciar sesión
-        </a>
-      </p>
-      <p>Si el botón no funciona, copia y pega esta URL en tu navegador:</p>
-      <code style="display:block;word-break:break-all;background:#f3f4f6;padding:10px;border-radius:6px">${url}</code>
-    </div>
-  `;
+// Verificar la conexión al iniciar
+transporter.verify(function (error, success) {
+  if (error) {
+    console.log('❌ Error de conexión SMTP:', error);
+  } else {
+    console.log('✅ Servidor SMTP listo para enviar emails');
+  }
+});
 
-  await transporter.sendMail({
-    from,
-    to,
-    subject: "Tu enlace mágico para iniciar sesión",
-    html,
-  });
-}
+export const sendMagicLinkEmail = async (to, url) => {
+  try {
+    const info = await transporter.sendMail({
+      from: process.env.MAIL_FROM,
+      to,
+      subject: 'Tu enlace de acceso',
+      html: `
+        <div style="font-family: Arial, sans-serif; padding: 20px; max-width: 600px; margin: 0 auto;">
+          <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; border-radius: 10px 10px 0 0; text-align: center;">
+            <h1 style="color: white; margin: 0; font-size: 28px;">🔐 Enlace de Acceso</h1>
+          </div>
+          
+          <div style="background: #f7f7f7; padding: 30px; border-radius: 0 0 10px 10px;">
+            <p style="color: #333; font-size: 16px; line-height: 1.6;">
+              Hola,
+            </p>
+            <p style="color: #333; font-size: 16px; line-height: 1.6;">
+              Haz clic en el siguiente botón para iniciar sesión en tu cuenta:
+            </p>
+            
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="${url}" 
+                 style="display: inline-block; 
+                        padding: 14px 32px; 
+                        background: #6366f1; 
+                        color: white; 
+                        text-decoration: none; 
+                        border-radius: 8px; 
+                        font-weight: bold;
+                        font-size: 16px;
+                        box-shadow: 0 4px 6px rgba(99, 102, 241, 0.3);">
+                Iniciar Sesión
+              </a>
+            </div>
+            
+            <p style="color: #666; font-size: 14px; line-height: 1.6;">
+              O copia y pega este enlace en tu navegador:
+            </p>
+            <p style="color: #6366f1; font-size: 12px; word-break: break-all; background: white; padding: 10px; border-radius: 5px;">
+              ${url}
+            </p>
+            
+            <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd;">
+              <p style="color: #999; font-size: 13px; margin: 5px 0;">
+                ⏱️ Este enlace expira en <strong>15 minutos</strong>
+              </p>
+              <p style="color: #999; font-size: 13px; margin: 5px 0;">
+                🔒 Si no solicitaste este enlace, puedes ignorar este correo de forma segura
+              </p>
+            </div>
+          </div>
+        </div>
+      `
+    });
+
+    console.log('✅ Email enviado:', info.messageId);
+    console.log('📧 Preview URL:', nodemailer.getTestMessageUrl(info));
+    return info;
+  } catch (error) {
+    console.error('❌ Error enviando email:', error);
+    throw error;
+  }
+};
