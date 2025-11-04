@@ -1,32 +1,14 @@
-import nodemailer from 'nodemailer';
+import { Resend } from 'resend';
 
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,
-  port: parseInt(process.env.SMTP_PORT),
-  secure: process.env.SMTP_SECURE === 'true', // true para 465
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
-  },
-  connectionTimeout: 10000, // 10 segundos
-  greetingTimeout: 10000,
-  socketTimeout: 10000,
-});
-
-// Verificar conexión
-transporter.verify(function (error, success) {
-  if (error) {
-    console.log('❌ Error de conexión SMTP:', error);
-  } else {
-    console.log('✅ Servidor SMTP listo');
-  }
-});
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 export const sendMagicLinkEmail = async (to, url) => {
   try {
-    const info = await transporter.sendMail({
-      from: process.env.MAIL_FROM,
-      to,
+    console.log('📧 Enviando email a:', to);
+
+    const { data, error } = await resend.emails.send({
+      from: 'Enlace Mágico <onboarding@resend.dev>', // Email de prueba de Resend
+      to: [to],
       subject: 'Tu enlace de acceso',
       html: `
         <div style="font-family: Arial, sans-serif; padding: 20px; max-width: 600px; margin: 0 auto;">
@@ -77,10 +59,15 @@ export const sendMagicLinkEmail = async (to, url) => {
       `
     });
 
-    console.log('✅ Email enviado:', info.messageId);
-    return info;
+    if (error) {
+      console.error('❌ Error de Resend:', error);
+      throw new Error(error.message);
+    }
+
+    console.log('✅ Email enviado exitosamente:', data.id);
+    return data;
   } catch (error) {
-    console.error('❌ Error enviando email:', error.message);
+    console.error('❌ Error enviando email:', error);
     throw new Error(`No se pudo enviar el email: ${error.message}`);
   }
 };
