@@ -1,25 +1,24 @@
 import nodemailer from 'nodemailer';
 
-// Configurar el transportador con tus variables de entorno
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST,
-  port: process.env.SMTP_PORT,
-  secure: process.env.SMTP_PORT === '465', // true para 465, false para otros puertos
+  port: parseInt(process.env.SMTP_PORT),
+  secure: process.env.SMTP_SECURE === 'true', // true para 465
   auth: {
     user: process.env.SMTP_USER,
     pass: process.env.SMTP_PASS,
   },
-  tls: {
-    rejectUnauthorized: false // Para desarrollo
-  }
+  connectionTimeout: 10000, // 10 segundos
+  greetingTimeout: 10000,
+  socketTimeout: 10000,
 });
 
-// Verificar la conexión al iniciar
+// Verificar conexión
 transporter.verify(function (error, success) {
   if (error) {
     console.log('❌ Error de conexión SMTP:', error);
   } else {
-    console.log('✅ Servidor SMTP listo para enviar emails');
+    console.log('✅ Servidor SMTP listo');
   }
 });
 
@@ -79,10 +78,9 @@ export const sendMagicLinkEmail = async (to, url) => {
     });
 
     console.log('✅ Email enviado:', info.messageId);
-    console.log('📧 Preview URL:', nodemailer.getTestMessageUrl(info));
     return info;
   } catch (error) {
-    console.error('❌ Error enviando email:', error);
-    throw error;
+    console.error('❌ Error enviando email:', error.message);
+    throw new Error(`No se pudo enviar el email: ${error.message}`);
   }
 };
