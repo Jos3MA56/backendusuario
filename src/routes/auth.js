@@ -4,6 +4,7 @@ import crypto from 'crypto';
 import User from '../models/User.js';
 import MagicLink from '../models/MagicLink.js';
 import { signAccess } from '../lib/jwt.js';
+
 import { sendMagicLinkEmail } from "../email/sendMail.js";
 
 const router = express.Router();
@@ -50,15 +51,15 @@ router.post("/register", async (req, res) => {
 // === Login (JWT) ===
 router.post('/login', async (req, res) => {
   try {
-    const { email, passwordHash } = req.body || {};
-    const user = await User.findOne({ email });
+    const { correo, passwordHash } = req.body || {};
+    const user = await User.findOne({ correo });
     if (!user || !user.passwordHash) return res.status(401).json({ error: 'Credenciales inválidas' });
 
     const ok = await bcrypt.compare(passwordHash || '', user.passwordHash);
     if (!ok) return res.status(401).json({ error: 'Credenciales inválidas' });
 
-    const token = signAccess({ sub: user.id, email: user.email });
-    return res.json({ ok: true, token, user: { id: user.id, email: user.email, nombre: user.nombre } });
+    const token = signAccess({ sub: user.id, correo: user.correo });
+    return res.json({ ok: true, token, user: { id: user.id, correo: user.correo, nombre: user.nombre } });
   } catch (e) {
     return res.status(500).json({ error: 'No se pudo iniciar sesión', detail: e?.message });
   }
