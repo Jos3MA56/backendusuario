@@ -1,6 +1,6 @@
 import sgMail from '@sendgrid/mail';
 
-// Configurar API Key
+// Configurar API Key (desde variables de entorno)
 sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 
 export const sendMagicLinkEmail = async (to, url) => {
@@ -10,8 +10,9 @@ export const sendMagicLinkEmail = async (to, url) => {
     const msg = {
       to,
       from: {
-        email: 'antonio37829@gmail.com',
-        name: 'Enlace Mágico'
+        // 👇 Usa el correo verificado en SendGrid aquí
+        email: process.env.FROM_EMAIL || 'antonio37829@gmail.com',
+        name: 'Enlace Mágico',
       },
       subject: 'Tu enlace de acceso',
       html: `
@@ -69,7 +70,7 @@ export const sendMagicLinkEmail = async (to, url) => {
           </div>
         </body>
         </html>
-      `
+      `,
     };
 
     const response = await sgMail.send(msg);
