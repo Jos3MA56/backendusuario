@@ -1,28 +1,33 @@
-import cors from 'cors';
+import 'dotenv/config'
+import express from 'express'
+import cors from 'cors'
+import cookieParser from 'cookie-parser'
+import authRouter from './routes/auth.js'
 
-function allowOrigin(origin) {
-  if (!origin) return true; // Thunder/Postman
-  try {
-    const h = new URL(origin).hostname;
-    // PRODUCCIÓN: tu dominio del front en Vercel
-    if (h === 'frontendusuario.vercel.app') return true;
-    // PREVIEWS de Vercel: si usas ramas (front-branch-user.vercel.app)
-    if (h.endsWith('.vercel.app')) return true;
-    // LOCAL
-    if (h === 'localhost' || h === '127.0.0.1') return true;
-  } catch (_) { }
-  return false;
-}
+const app = express()
 
-const corsOptions = {
+// CORS: agrega tu dominio de front y local
+const allowed = (process.env.CORS_ORIGINS || '')
+  .split(',').map(s => s.trim()).filter(Boolean)
+
+const corsOpts = {
   origin(origin, cb) {
-    return allowOrigin(origin) ? cb(null, true) : cb(new Error('CORS bloqueado: ' + origin));
+    if (!origin) return cb(null, true)
+    if (!allowed.length || allowed.includes(origin)) return cb(null, true)
+    cb(new Error('CORS bloqueado: ' + origin))
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-};
+  allowedHeaders: ['Content-Type', 'Authorization']
+}
 
-app.use(cors(corsOptions));
-// MUY IMPORTANTE: responder los preflights
-app.options('*', cors(corsOptions));
+app.use(cors(corsOpts))
+app.options('*', cors(corsOpts)) // ¡preflight!
+
+app.use(express.json())
+app.use(cookieParser())
+
+app.use('/auth', authRouter)
+app.get('/', (_req, res) => res.status(200).send('API OK')) // health
+
+export default app

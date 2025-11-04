@@ -1,11 +1,20 @@
-import 'dotenv/config';
-import { createServer } from 'http';
-import app from './src/app.js';
-import './src/db.js'; // inicializa conexión
+import mongoose from 'mongoose'
+import app from './src/app.js'
 
-const PORT = process.env.PORT || 4000;
-const server = createServer(app);
+const PORT = process.env.PORT || 4000
+const MONGO = process.env.MONGO_URI
 
-server.listen(PORT, () => {
-    console.log(`✅ Auth backend escuchando en http://localhost:${PORT}`);
-});
+async function start() {
+    try {
+        await mongoose.connect(MONGO, { autoIndex: true })
+        console.log('✅ Conectado a MongoDB Atlas')
+
+        app.listen(PORT, () => {
+            console.log(`✅ Backend escuchando en http://localhost:${PORT}`)
+        })
+    } catch (e) {
+        console.error('❌ Error al iniciar:', e)
+        process.exit(1)
+    }
+}
+start()
