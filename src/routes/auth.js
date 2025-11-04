@@ -25,12 +25,7 @@ router.post("/register", async (req, res) => {
     // ✅ Recibe "password" desde el frontend
     let { correo, password, nombre, apPaterno, apMaterno, telefono, edad, isActive } = req.body;
 
-    // ✅ Normalizar el correo (lowercase y trim)
-    if (correo) {
-      correo = correo.toLowerCase().trim();
-    }
-
-    // ✅ Validación mejorada que indica QUÉ falta
+    // ✅ Validación ANTES de normalizar
     if (!correo || !password) {
       const missing = [];
       if (!correo) missing.push('correo');
@@ -41,6 +36,9 @@ router.post("/register", async (req, res) => {
         recibido: { correo, password: password ? '***' : undefined }
       });
     }
+
+    // ✅ Normalizar el correo DESPUÉS de validar
+    correo = correo.toLowerCase().trim();
 
     const exists = await User.findOne({ correo });
     if (exists) return res.status(409).json({ error: "El usuario ya existe" });
