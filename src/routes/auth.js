@@ -53,7 +53,7 @@ router.post('/login', async (req, res) => {
   try {
     const { correo, password } = req.body || {};
     const user = await User.findOne({ correo });
-    if (!user || !user.passwordHash) return res.status(401).json({ error: 'Credenciales inválidas' });
+    if (!user || !user.password) return res.status(401).json({ error: 'Credenciales inválidas' });
 
     const ok = await bcrypt.compare(password || '', user.password);
     if (!ok) return res.status(401).json({ error: 'Credenciales inválidas' });
