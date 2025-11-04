@@ -6,20 +6,18 @@ import authRouter from './routes/auth.js'
 
 const app = express()
 
-// CORS: agrega tu dominio de front y local
-const allowed = (process.env.CORS_ORIGINS || '')
-  .split(',').map(s => s.trim()).filter(Boolean)
-
 const corsOpts = {
   origin(origin, cb) {
-    if (!origin) return cb(null, true)
-    if (!allowed.length || allowed.includes(origin)) return cb(null, true)
+    if (!origin) return cb(null, true) // Thunder/Postman
+    if (origin === 'https://frontendusuario.vercel.app') return cb(null, true)
+    if (origin.startsWith('http://localhost')) return cb(null, true)
     cb(new Error('CORS bloqueado: ' + origin))
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }
+
 
 app.use(cors(corsOpts))
 app.options('*', cors(corsOpts)) // ¡preflight!
