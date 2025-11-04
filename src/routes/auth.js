@@ -51,11 +51,11 @@ router.post("/register", async (req, res) => {
 // === Login (JWT) ===
 router.post('/login', async (req, res) => {
   try {
-    const { correo, passwordHash } = req.body || {};
+    const { correo, password } = req.body || {};
     const user = await User.findOne({ correo });
     if (!user || !user.passwordHash) return res.status(401).json({ error: 'Credenciales inválidas' });
 
-    const ok = await bcrypt.compare(passwordHash || '', user.passwordHash);
+    const ok = await bcrypt.compare(password || '', user.password);
     if (!ok) return res.status(401).json({ error: 'Credenciales inválidas' });
 
     const token = signAccess({ sub: user.id, correo: user.correo });
