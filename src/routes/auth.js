@@ -4,7 +4,7 @@ import crypto from 'crypto';
 import User from '../models/User.js';
 import MagicLink from '../models/MagicLink.js';
 import { signAccess } from '../lib/jwt.js';
-import { getTransporter } from '../lib/mailer.js';
+import { sendMagicLinkEmail } from "../email/sendMail.js";
 
 const router = express.Router();
 
@@ -64,52 +64,25 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// === Solicitar enlace mágico ===
-router.post('/magic-link', async (req, res) => {
+router.post("/magic-link", async (req, res) => {
+  const { correo } = req.body;
+  if (!correo) return res.status(400).json({ error: "Falta correo" });
+
   try {
-    // Acepta { email } o { correo } y usa el campo "correo" del modelo
-    const correoBody = req.body.email || req.body.correo;
-    if (!correoBody) return res.status(400).json({ error: 'Falta email/correo' });
+    // Aquí generas el link
+    const token = crypto.randomBytes(32).toString("hex");
+    const link = `${process.env.APP_ORIGIN}/magic-callback?token=${token}`;
 
-    // 1) Buscar o crear usuario passwordless
-    let user = await User.findOne({ correo: correoBody });
-    if (!user) user = await User.create({ correo: correoBody });
+    // Guarda el token temporal en MongoDB (ya lo haces)
+    // await MagicLink.create({ token, correo, expiresAt: ... })
 
-    // 2) Crear token de un solo uso (hash en DB + TTL)
-    const rawToken = crypto.randomBytes(32).toString('hex');
-    const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+    // Envía con Resend
+    const sent = await sendMagicLinkEmail(correo, link);
 
-    const ttlMin = Number(process.env.MAGIC_TTL_MINUTES || 15);
-    const expiresAt = new Date(Date.now() + ttlMin * 60 * 1000);
-
-    await MagicLink.create({ user: user._id, tokenHash, expiresAt, used: false });
-
-    // 3) Construir link para el FRONT
-    const appOrigin = process.env.APP_ORIGIN || 'http://localhost:5173';
-    const link = `${appOrigin}/magic-callback?token=${rawToken}`;
-
-    // 4) Enviar email si hay SMTP; si falla, devolvemos link igual (fallback)
-    const tx = getTransporter(); // null si no configuraste SMTP
-    if (tx) {
-      try {
-        await tx.sendMail({
-          from: process.env.SMTP_FROM || process.env.SMTP_USER,
-          to: correoBody,
-          subject: 'Tu enlace de acceso',
-          html: `<p>Entra con este enlace (expira en ${ttlMin} min):</p><p><a href="${link}">${link}</a></p>`
-        });
-        return res.json({ ok: true, sent: true });
-      } catch (e) {
-        console.warn('SMTP error:', e?.message);
-        // ⚠️ Fallback: no cortamos el flujo, devolvemos el link para pruebas
-        return res.json({ ok: true, sent: false, link, warn: e?.message || 'SMTP failed' });
-      }
-    }
-
-    // Sin SMTP configurado → modo dev
-    return res.json({ ok: true, sent: false, link });
-  } catch (e) {
-    return res.status(500).json({ error: 'No se pudo generar el enlace', detail: e?.message });
+    return res.json({ ok: true, sent, link: sent ? undefined : link });
+  } catch (error) {
+    console.error("Error generando enlace mágico:", error);
+    res.status(500).json({ error: "No se pudo generar el enlace" });
   }
 });
 
