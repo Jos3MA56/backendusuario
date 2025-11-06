@@ -1,14 +1,16 @@
+// src/middlewares/auth.js
 import jwt from "jsonwebtoken";
 
-export const auth = (req, res, next) => {
-  const header = req.headers.authorization || "";
-  const token = header.startsWith("Bearer ") ? header.slice(7) : null;
-  if (!token) return res.status(401).json({ error: "No autorizado" });
+export function requireAuth(req, res, next) {
+  const h = req.headers.authorization || "";
+  const [, token] = h.split(" ");
+  if (!token) return res.status(401).json({ error: "Falta token" });
+
   try {
     const payload = jwt.verify(token, process.env.JWT_ACCESS_SECRET);
-    req.user = payload;
+    req.user = payload; // { sub, email, iat, exp }
     next();
   } catch {
     return res.status(401).json({ error: "Token inválido o expirado" });
   }
-};
+}
