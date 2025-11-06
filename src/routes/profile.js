@@ -5,7 +5,6 @@ import { requireAuth } from "../middlewares/auth.js";
 
 const router = express.Router();
 
-// GET /profile  → requiere Bearer token
 router.get("/", requireAuth, async (req, res) => {
     const user = await User.findById(req.user.sub)
         .select("nombre apPaterno apMaterno correo telefono edad createdAt");
