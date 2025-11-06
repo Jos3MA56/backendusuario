@@ -5,6 +5,7 @@ import cors from "cors";
 import cookieParser from "cookie-parser";
 import mongoose from "mongoose";
 import authRouter from "./src/routes/auth.js";
+import profileRouter from "./src/routes/profile.js";
 
 const app = express();
 app.set("trust proxy", 1);
@@ -42,6 +43,7 @@ app.use(cookieParser());
 
 app.get("/", (_req, res) => res.send("✅ API funcionando correctamente"));
 app.use("/auth", authRouter);
+app.use("/profile", profileRouter);
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`🚀 API en puerto ${PORT}`));
