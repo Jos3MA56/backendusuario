@@ -1,8 +1,7 @@
 import sgMail from '@sendgrid/mail';
 
-// --- Config ---
 const API_KEY = (process.env.SENDGRID_API_KEY || '').trim();
-const FROM = (process.env.FROM_EMAIL || 'antonio37829@gmail.com').trim(); // 👈 debe ser el remitente verificado
+const FROM = (process.env.FROM_EMAIL || 'antonio37829@gmail.com').trim();
 
 if (!API_KEY) throw new Error('Falta SENDGRID_API_KEY');
 if (!FROM) throw new Error('Falta FROM_EMAIL (remitente verificado)');
@@ -17,7 +16,7 @@ export const sendMagicLinkEmail = async (to, url) => {
 
   const msg = {
     to: toAddr,
-    from: FROM, // 👈 usa string; primero validamos lo mínimo
+    from: FROM,
     subject: 'Tu enlace de acceso',
     html: `
       <p>Hola,</p>

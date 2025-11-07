@@ -1,5 +1,4 @@
-// server.js (en la raíz)
-import 'dotenv/config'; // ← AGREGA ESTA LÍNEA AL INICIO
+import 'dotenv/config';
 import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";

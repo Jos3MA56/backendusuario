@@ -1,4 +1,3 @@
-// src/routes/profile.js
 import express from "express";
 import User from "../models/User.js";
 import { requireAuth } from "../middlewares/auth.js";
