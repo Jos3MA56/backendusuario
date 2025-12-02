@@ -1,3 +1,4 @@
+// src/routes/auth.js
 import express from "express";
 import crypto from "crypto";
 import { v4 as uuidv4 } from "uuid";
@@ -6,18 +7,39 @@ import bcrypt from "bcryptjs";
 import User from "../models/User.js";
 import RefreshToken from "../models/RefreshToken.js";
 import MagicLink from "../models/MagicLink.js";
+import PasswordReset from "../models/PasswordReset.js";
+
 import { signAccess } from "../lib/jwt.js";
 import { hash, verifyHash } from "../lib/crypto.js";
-import { sendMagicLinkEmail } from '../lib/email.js';
+import { sendMagicLinkEmail, sendResetPasswordEmail } from "../lib/email.js";
+import { loginLimiter, magicLimiter, resetLimiter } from "../middlewares/rateLimiter.js";
 
 const router = express.Router();
 
+// ─────────────────────────────────────────────
+// REGLA DE COMPLEJIDAD DE CONTRASEÑA
+// ─────────────────────────────────────────────
+function validarPassword(password) {
+  // Mín: 8 caracteres, mayúscula, minúscula, número y símbolo
+  const regex = /^(?=.*[A-Z])(?=.*[a-z])(?=.*\d)(?=.*[\W_]).{8,}$/;
+  return regex.test(password);
+}
+
+// ─────────────────────────────────────────────
+// REGISTRO
+// ─────────────────────────────────────────────
 router.post("/register", async (req, res) => {
   try {
     const { nombre, apPaterno, apMaterno, telefono, correo, edad, password } = req.body;
 
     if (!nombre || !apPaterno || !correo || !password)
       return res.status(400).json({ error: "Faltan datos requeridos" });
+
+    if (!validarPassword(password)) {
+      return res.status(400).json({
+        error: "La contraseña debe tener mínimo 8 caracteres, mayúsculas, minúsculas, número y símbolo."
+      });
+    }
 
     const exists = await User.findOne({ correo });
     if (exists) return res.status(409).json({ error: "El correo ya está registrado" });
@@ -35,11 +57,15 @@ router.post("/register", async (req, res) => {
   }
 });
 
-router.post("/login", async (req, res) => {
+// ─────────────────────────────────────────────
+// LOGIN (con limitador de fuerza bruta)
+// ─────────────────────────────────────────────
+router.post("/login", loginLimiter, async (req, res) => {
   try {
     const { correo, password } = req.body;
     const user = await User.findOne({ correo, isActive: true });
-    if (!user || !user.passwordHash) return res.status(401).json({ error: "Credenciales inválidas" });
+    if (!user || !user.passwordHash)
+      return res.status(401).json({ error: "Credenciales inválidas" });
 
     const ok = await bcrypt.compare(password, user.passwordHash);
     if (!ok) return res.status(401).json({ error: "Credenciales inválidas" });
@@ -69,6 +95,9 @@ router.post("/login", async (req, res) => {
   }
 });
 
+// ─────────────────────────────────────────────
+// REFRESH TOKEN
+// ─────────────────────────────────────────────
 router.post("/refresh", async (req, res) => {
   try {
     const raw = req.cookies?.refresh_token || req.body?.refresh_token;
@@ -115,6 +144,9 @@ router.post("/refresh", async (req, res) => {
   }
 });
 
+// ─────────────────────────────────────────────
+// LOGOUT
+// ─────────────────────────────────────────────
 router.post("/logout", async (req, res) => {
   try {
     const raw = req.cookies?.refresh_token || req.body?.refresh_token;
@@ -134,33 +166,26 @@ router.post("/logout", async (req, res) => {
   }
 });
 
-router.post("/magic-link", async (req, res) => {
-  console.log("🔍 Inicio magic-link");
-  console.log("📧 RESEND_API_KEY configurado:", process.env.RESEND_API_KEY ? "SÍ" : "NO");
-
+// ─────────────────────────────────────────────
+// MAGIC LINK (con limitador por correo)
+// ─────────────────────────────────────────────
+router.post("/magic-link", magicLimiter, async (req, res) => {
   try {
     const { correo } = req.body;
-    console.log("📬 Correo recibido:", correo);
 
     if (!correo) return res.status(400).json({ error: "Falta correo" });
 
-    // Buscar o crear usuario automáticamente
     let user = await User.findOne({ correo });
 
     if (!user) {
-      console.log("⚠️ Usuario no existe, creando automáticamente...");
       user = await User.create({
         correo,
         nombre: correo.split('@')[0],
         isActive: true
       });
-      console.log("✅ Usuario creado:", user._id);
     } else if (user.isActive === false) {
-      console.warn("⚠️ Usuario inactivo:", correo);
       return res.json({ ok: true });
     }
-
-    console.log("✅ Usuario:", user._id);
 
     const raw = crypto.randomBytes(32).toString("hex");
     const tokenHash = await hash(raw);
@@ -174,31 +199,17 @@ router.post("/magic-link", async (req, res) => {
       userAgent: req.headers["user-agent"] || ""
     });
 
-    console.log("✅ MagicLink creado en BD");
-
     const ORIGIN = process.env.APP_ORIGIN;
     if (!ORIGIN) {
-      console.error("❌ Falta APP_ORIGIN");
       return res.status(500).json({ error: "Config APP_ORIGIN faltante" });
     }
 
     const url = `${ORIGIN}/magic?token=${raw}&email=${encodeURIComponent(correo)}`;
-    console.log("🔗 URL generada:", url);
-    console.log("📤 Intentando enviar email con Resend...");
+    await sendMagicLinkEmail(correo, url);
 
-    try {
-      const result = await sendMagicLinkEmail(correo, url);
-      console.log("✅ Email enviado exitosamente:", result.id);
-      return res.json({ ok: true });
-    } catch (emailError) {
-      console.error("❌ ERROR EMAIL:", emailError.message);
-      return res.status(500).json({
-        error: "Error al enviar correo",
-        message: emailError.message
-      });
-    }
+    return res.json({ ok: true });
   } catch (err) {
-    console.error("❌ ERROR GENERAL:", err);
+    console.error("magic-link error:", err);
     return res.status(500).json({
       error: "Error en el servidor",
       message: err.message
@@ -206,6 +217,9 @@ router.post("/magic-link", async (req, res) => {
   }
 });
 
+// ─────────────────────────────────────────────
+// MAGIC VERIFY
+// ─────────────────────────────────────────────
 router.post("/magic/verify", async (req, res) => {
   try {
     const { email, token, correo } = req.body;
@@ -249,6 +263,93 @@ router.post("/magic/verify", async (req, res) => {
 
   } catch (err) {
     console.error("magic verify error:", err);
+    return res.status(500).json({ error: "Error en el servidor" });
+  }
+});
+
+// ─────────────────────────────────────────────
+// RECUPERACIÓN DE CONTRASEÑA – SOLICITUD
+// ─────────────────────────────────────────────
+router.post("/reset/request", resetLimiter, async (req, res) => {
+  try {
+    const { correo } = req.body;
+    if (!correo) return res.status(400).json({ error: "Falta correo" });
+
+    const user = await User.findOne({ correo });
+    if (!user) {
+      // No revelamos si el usuario existe
+      return res.json({ ok: true });
+    }
+
+    const raw = crypto.randomBytes(32).toString("hex");
+    const tokenHash = await hash(raw);
+    const expiresAt = new Date(Date.now() + 1000 * 60 * 15); // 15 min
+
+    await PasswordReset.create({
+      userId: user._id,
+      tokenHash,
+      expiresAt
+    });
+
+    const ORIGIN = process.env.APP_ORIGIN;
+    if (!ORIGIN) {
+      return res.status(500).json({ error: "Config APP_ORIGIN faltante" });
+    }
+
+    const url = `${ORIGIN}/reset-password?token=${raw}&email=${encodeURIComponent(correo)}`;
+    await sendResetPasswordEmail(correo, url);
+
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error("reset request error:", err);
+    return res.status(500).json({ error: "Error en el servidor" });
+  }
+});
+
+// ─────────────────────────────────────────────
+// RECUPERACIÓN DE CONTRASEÑA – CONFIRMACIÓN
+// ─────────────────────────────────────────────
+router.post("/reset/confirm", async (req, res) => {
+  try {
+    const { correo, token, password } = req.body;
+
+    if (!correo || !token || !password) {
+      return res.status(400).json({ error: "Faltan datos" });
+    }
+
+    if (!validarPassword(password)) {
+      return res.status(400).json({
+        error: "La nueva contraseña no cumple los requisitos de seguridad."
+      });
+    }
+
+    const user = await User.findOne({ correo });
+    if (!user) return res.status(400).json({ error: "Datos inválidos" });
+
+    const records = await PasswordReset.find({
+      userId: user._id,
+      usedAt: null,
+      expiresAt: { $gt: new Date() }
+    }).sort({ createdAt: -1 }).limit(20);
+
+    let row = null;
+    for (const r of records) {
+      if (await verifyHash(token, r.tokenHash)) { row = r; break; }
+    }
+
+    if (!row) return res.status(401).json({ error: "Token inválido o expirado" });
+
+    await PasswordReset.updateOne(
+      { _id: row._id },
+      { $set: { usedAt: new Date() } }
+    );
+
+    const newHash = await hash(password);
+    await User.updateOne({ _id: user._id }, { $set: { passwordHash: newHash } });
+
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error("reset confirm error:", err);
     return res.status(500).json({ error: "Error en el servidor" });
   }
 });
