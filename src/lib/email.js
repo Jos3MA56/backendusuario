@@ -36,3 +36,22 @@ export const sendMagicLinkEmail = async (to, url) => {
     throw new Error(`No se pudo enviar el email: ${error.message}`);
   }
 };
+export const sendResetPasswordEmail = async (to, url) => {
+  const toAddr = (to || '').trim();
+
+  const msg = {
+    to: toAddr,
+    from: FROM,
+    subject: 'Restablecer contraseña',
+    html: `
+      <p>Hola,</p>
+      <p>Has solicitado restablecer tu contraseña.</p>
+      <p>Haz clic en el siguiente enlace para definir una nueva contraseña:</p>
+      <p><a href="${url}">${url}</a></p>
+      <p>El enlace expira en 15 minutos. Si no fuiste tú, ignora este mensaje.</p>
+    `,
+  };
+
+  await sgMail.send(msg);
+  return { success: true };
+};
