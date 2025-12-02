@@ -2,6 +2,7 @@ import 'dotenv/config';
 import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
+import helmet from "helmet";
 import mongoose from "mongoose";
 import authRouter from "./src/routes/auth.js";
 import profileRouter from "./src/routes/profile.js";
@@ -36,8 +37,9 @@ app.use(cors({
     allowedHeaders: ["Content-Type", "Authorization"],
 }));
 app.options("*", cors());
+app.use(helmet());
 
-app.use(express.json());
+app.use(express.json({ limit: "200kb" }));
 app.use(cookieParser());
 
 app.get("/", (_req, res) => res.send("✅ API funcionando correctamente"));
