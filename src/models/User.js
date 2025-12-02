@@ -7,7 +7,7 @@ const userSchema = new mongoose.Schema(
     apMaterno: { type: String },
     telefono: { type: String },
     correo: { type: String, required: true, unique: true, index: true },
-    edad: { type: Number },
+    fechaNacimiento: { type: Date },
     passwordHash: { type: String, required: true },
     isActive: { type: Boolean, default: true }
   },
