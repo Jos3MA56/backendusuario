@@ -22,7 +22,7 @@ function validarPassword(password) {
 
 router.post("/register", async (req, res) => {
   try {
-    const { nombre, apPaterno, apMaterno, telefono, correo, edad, password } = req.body;
+    const { nombre, apPaterno, apMaterno, telefono, correo, fechaNacimiento, password } = req.body;
 
     if (!nombre || !apPaterno || !correo || !password)
       return res.status(400).json({ error: "Faltan datos requeridos" });
@@ -39,7 +39,7 @@ router.post("/register", async (req, res) => {
     const passwordHash = await bcrypt.hash(password, 10);
 
     const user = await User.create({
-      nombre, apPaterno, apMaterno, telefono, correo, edad, passwordHash
+      nombre, apPaterno, apMaterno, telefono, correo, fechaNacimiento, passwordHash
     });
 
     return res.status(201).json({ ok: true, userId: user._id });
