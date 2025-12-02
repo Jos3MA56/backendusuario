@@ -6,7 +6,7 @@ const router = express.Router();
 
 router.get("/", requireAuth, async (req, res) => {
     const user = await User.findById(req.user.sub)
-        .select("nombre apPaterno apMaterno correo telefono edad createdAt");
+        .select("nombre apPaterno apMaterno correo telefono fechaNacimiento createdAt");
     if (!user) return res.status(404).json({ error: "Usuario no encontrado" });
     res.json({ user });
 });
