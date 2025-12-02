@@ -1,4 +1,3 @@
-// src/routes/auth.js
 import express from "express";
 import crypto from "crypto";
 import { v4 as uuidv4 } from "uuid";
@@ -16,18 +15,11 @@ import { loginLimiter, magicLimiter, resetLimiter } from "../middlewares/rateLim
 
 const router = express.Router();
 
-// ─────────────────────────────────────────────
-// REGLA DE COMPLEJIDAD DE CONTRASEÑA
-// ─────────────────────────────────────────────
 function validarPassword(password) {
-  // Mín: 8 caracteres, mayúscula, minúscula, número y símbolo
   const regex = /^(?=.*[A-Z])(?=.*[a-z])(?=.*\d)(?=.*[\W_]).{8,}$/;
   return regex.test(password);
 }
 
-// ─────────────────────────────────────────────
-// REGISTRO
-// ─────────────────────────────────────────────
 router.post("/register", async (req, res) => {
   try {
     const { nombre, apPaterno, apMaterno, telefono, correo, edad, password } = req.body;
@@ -57,9 +49,6 @@ router.post("/register", async (req, res) => {
   }
 });
 
-// ─────────────────────────────────────────────
-// LOGIN (con limitador de fuerza bruta)
-// ─────────────────────────────────────────────
 router.post("/login", loginLimiter, async (req, res) => {
   try {
     const { correo, password } = req.body;
@@ -95,9 +84,6 @@ router.post("/login", loginLimiter, async (req, res) => {
   }
 });
 
-// ─────────────────────────────────────────────
-// REFRESH TOKEN
-// ─────────────────────────────────────────────
 router.post("/refresh", async (req, res) => {
   try {
     const raw = req.cookies?.refresh_token || req.body?.refresh_token;
@@ -144,9 +130,6 @@ router.post("/refresh", async (req, res) => {
   }
 });
 
-// ─────────────────────────────────────────────
-// LOGOUT
-// ─────────────────────────────────────────────
 router.post("/logout", async (req, res) => {
   try {
     const raw = req.cookies?.refresh_token || req.body?.refresh_token;
@@ -166,9 +149,6 @@ router.post("/logout", async (req, res) => {
   }
 });
 
-// ─────────────────────────────────────────────
-// MAGIC LINK (con limitador por correo)
-// ─────────────────────────────────────────────
 router.post("/magic-link", magicLimiter, async (req, res) => {
   try {
     const { correo } = req.body;
@@ -217,9 +197,6 @@ router.post("/magic-link", magicLimiter, async (req, res) => {
   }
 });
 
-// ─────────────────────────────────────────────
-// MAGIC VERIFY
-// ─────────────────────────────────────────────
 router.post("/magic/verify", async (req, res) => {
   try {
     const { email, token, correo } = req.body;
@@ -267,9 +244,6 @@ router.post("/magic/verify", async (req, res) => {
   }
 });
 
-// ─────────────────────────────────────────────
-// RECUPERACIÓN DE CONTRASEÑA – SOLICITUD
-// ─────────────────────────────────────────────
 router.post("/reset/request", resetLimiter, async (req, res) => {
   try {
     const { correo } = req.body;
@@ -277,13 +251,12 @@ router.post("/reset/request", resetLimiter, async (req, res) => {
 
     const user = await User.findOne({ correo });
     if (!user) {
-      // No revelamos si el usuario existe
       return res.json({ ok: true });
     }
 
     const raw = crypto.randomBytes(32).toString("hex");
     const tokenHash = await hash(raw);
-    const expiresAt = new Date(Date.now() + 1000 * 60 * 15); // 15 min
+    const expiresAt = new Date(Date.now() + 1000 * 60 * 15);
 
     await PasswordReset.create({
       userId: user._id,
@@ -306,9 +279,6 @@ router.post("/reset/request", resetLimiter, async (req, res) => {
   }
 });
 
-// ─────────────────────────────────────────────
-// RECUPERACIÓN DE CONTRASEÑA – CONFIRMACIÓN
-// ─────────────────────────────────────────────
 router.post("/reset/confirm", async (req, res) => {
   try {
     const { correo, token, password } = req.body;
